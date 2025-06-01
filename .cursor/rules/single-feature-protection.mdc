@@ -1,5 +1,68 @@
 ---
-description:
-globs:
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
+# Proteção de Funcionalidades e Implementação Incremental
+
+## ⚠️ REGRA CRÍTICA - UMA FUNCIONALIDADE POR VEZ
+
+**IMPLEMENTE APENAS UMA FUNCIONALIDADE POR VEZ E JAMAIS ALTERE FUNCIONALIDADES EXISTENTES SEM AUTORIZAÇÃO.**
+
+### Princípios Fundamentais:
+
+1. **Uma Funcionalidade por Implementação**:
+   - Foque em APENAS uma funcionalidade por vez
+   - Complete totalmente antes de passar para outra
+   - Não misture implementações diferentes na mesma sessão
+
+2. **Proteção Absoluta do Código Existente**:
+   - **JAMAIS** altere funcionalidades que já estão funcionando
+   - Não modifique código existente a menos que seja especificamente solicitado
+   - Preserve todo comportamento atual das funcionalidades
+
+3. **Antes de Alterar Código Existente**:
+   - Sempre perguntar: "Posso modificar a funcionalidade X para implementar Y?"
+   - Aguardar autorização explícita do usuário
+   - Explicar exatamente o que será alterado e por quê
+
+### Diretrizes de Implementação:
+
+#### ✅ PERMITIDO:
+- Adicionar novos arquivos
+- Criar novas funções/componentes
+- Implementar nova funcionalidade isoladamente
+- Corrigir bugs quando especificamente solicitado
+
+#### ❌ PROIBIDO SEM AUTORIZAÇÃO:
+- Modificar funções/componentes existentes
+- Alterar estrutura de dados já funcionando
+- Refatorar código que está funcionando
+- Mudar APIs ou interfaces existentes
+- Remover ou renomear variáveis/funções existentes
+
+### Processo de Implementação:
+
+1. **Análise Prévia**:
+   - Identificar exatamente o que será implementado
+   - Verificar se afeta código existente
+   - Se afetar, PERGUNTAR ANTES
+
+2. **Implementação Isolada**:
+   - Criar novos arquivos quando possível
+   - Usar padrões de extensão (não modificação)
+   - Manter funcionalidades existentes intocadas
+
+3. **Integração Cuidadosa**:
+   - Integrar apenas nos pontos mínimos necessários
+   - Manter compatibilidade total
+   - Testar que nada quebrou
+
+### 🚨 LEMBRETES CONSTANTES:
+
+- **"Esta alteração pode quebrar algo que já funciona?"** → SE SIM, PERGUNTE PRIMEIRO
+- **"Estou modificando código existente?"** → SE SIM, PERGUNTE PRIMEIRO
+- **"Posso implementar isso sem tocar no que já existe?"** → SEMPRE PREFIRA ESTA ABORDAGEM
+
+### Quando em Dúvida:
+**SEMPRE escolha a abordagem mais conservadora e pergunte ao usuário antes de modificar qualquer coisa que já está funcionando.**

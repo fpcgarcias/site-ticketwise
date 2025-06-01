@@ -30,147 +30,35 @@ const SuccessPage: React.FC = () => {
       try {
         const registrationData = JSON.parse(registrationDataStr);
         
-        console.log('🎯 Dados do formulário:', { ...registrationData, password: '[OCULTA]' });
-        
-        // Conectar direto no Neon usando DATABASE_URL
-        const databaseUrl = import.meta.env.DATABASE_URL;
-        
-        // Usar biblioteca que funciona no browser para PostgreSQL
-        const { Client } = await import('@neondatabase/serverless');
-        const client = new Client(databaseUrl);
-        
-        await client.connect();
-        console.log('✅ Conectado ao Neon');
-
-        try {
-          // Hash da senha
-          const bcrypt = await import('bcryptjs');
-          const hashedPassword = await bcrypt.hash(registrationData.password, 12);
-
-          // Dados da empresa (só do formulário)
-          const companyData = {
-            name: registrationData.companyName,
-            email: registrationData.email,
-            cnpj: registrationData.cnpj,
-            phone: null,
-            domain: '',
-            plan_contracted: registrationData.plan,
-            employee_count: registrationData.employees,
-          };
-
-          console.log('🏢 Salvando empresa:', companyData.name);
-
-          // Verificar se empresa já existe pelo CNPJ
-          const searchResult = await client.query(
-            'SELECT id FROM companies WHERE cnpj = $1',
-            [companyData.cnpj]
-          );
-
-          let companyId: number;
-
-          if (searchResult.rows.length > 0) {
-            // Atualizar empresa existente
-            companyId = searchResult.rows[0].id;
-            await client.query(
-              `UPDATE companies SET 
-               name = $1, email = $2, domain = $3, phone = $4, updated_at = $5
-               WHERE id = $6`,
-              [
-                companyData.name,
-                companyData.email,
-                companyData.domain,
-                companyData.phone,
-                new Date().toISOString(),
-                companyId
-              ]
-            );
-            console.log('✅ Empresa atualizada:', companyId);
-          } else {
-            // Criar nova empresa
-            const insertResult = await client.query(
-              `INSERT INTO companies (name, email, cnpj, phone, domain, active, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING id`,
-              [
-                companyData.name,
-                companyData.email,
-                companyData.cnpj,
-                companyData.phone,
-                companyData.domain,
-                true,
-                new Date().toISOString(),
-                new Date().toISOString()
-              ]
-            );
-            companyId = insertResult.rows[0].id;
-            console.log('✅ Nova empresa criada:', companyId);
+        // Chamar função serverless para salvar no Neon
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-company-registration`,
+          {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              session_id: sessionId,
+              registration_data: registrationData
+            })
           }
+        );
 
-          // Dados do usuário
-          const fullName = `${registrationData.firstName} ${registrationData.lastName}`;
-          
-          console.log('👤 Salvando usuário:', fullName);
+        const result = await response.json();
 
-          // Verificar se usuário já existe pelo email
-          const userSearchResult = await client.query(
-            'SELECT id FROM users WHERE email = $1',
-            [registrationData.email]
-          );
-
-          let userId: number;
-
-          if (userSearchResult.rows.length > 0) {
-            // Atualizar usuário existente
-            userId = userSearchResult.rows[0].id;
-            await client.query(
-              `UPDATE users SET 
-               name = $1, username = $2, password = $3, role = $4, company_id = $5, updated_at = $6
-               WHERE id = $7`,
-              [
-                fullName,
-                registrationData.email,
-                hashedPassword,
-                'company_admin',
-                companyId,
-                new Date().toISOString(),
-                userId
-              ]
-            );
-            console.log('✅ Usuário atualizado:', userId);
-          } else {
-            // Criar novo usuário
-            const userInsertResult = await client.query(
-              `INSERT INTO users (name, email, username, password, role, company_id, active, ad_user, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-               RETURNING id`,
-              [
-                fullName,
-                registrationData.email,
-                registrationData.email,
-                hashedPassword,
-                'company_admin',
-                companyId,
-                true,
-                false,
-                new Date().toISOString(),
-                new Date().toISOString()
-              ]
-            );
-            userId = userInsertResult.rows[0].id;
-            console.log('✅ Novo usuário criado:', userId);
-          }
-
-          setStatus('success');
-          setMessage('Dados salvos com sucesso no sistema');
-          setCompanyId(companyId);
-          
-          // Limpar dados do sessionStorage após sucesso
-          sessionStorage.removeItem('registrationData');
-
-        } finally {
-          await client.end();
+        if (!response.ok || !result.success) {
+          setStatus('error');
+          setMessage(result.error || 'Erro ao salvar dados no backend');
+          return;
         }
 
+        setStatus('success');
+        setMessage(result.message || 'Dados salvos com sucesso no sistema');
+        setCompanyId(result.company_id);
+        sessionStorage.removeItem('registrationData');
       } catch (error) {
         console.error('❌ Erro ao salvar dados:', error);
         setStatus('error');

@@ -1,8 +1,8 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'npm:stripe@17.7.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
-import bcrypt from 'npm:bcryptjs@2.4.3';
-import { Client } from 'npm:pg@8.13.1';
+import bcrypt from 'npm:bcrypt@6.0.0';
+import { Client } from 'https://deno.land/x/postgres@v0.17.0/mod.ts';
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 
@@ -13,16 +13,26 @@ const MAX_PASSWORD_LENGTH = 128;
 
 // Configuração de conexão com Neon
 const neonConfig = {
-  host: 'ep-aged-wildflower-a5jxeizx.us-east-2.aws.neon.tech',
+  hostname: 'ep-aged-wildflower-a5jxeizx.us-east-2.aws.neon.tech',
   port: 5432,
   database: 'neondb',
   user: 'neondb_owner',
-  password: 'npg_QnKrZJhiQWdV',
-  ssl: { rejectUnauthorized: false }
+  password: 'npg_eI8LfDKd4HRq',
+  tls: {
+    enforce: false
+  } // equivalente a rejectUnauthorized: false
 };
 
-async function connectToNeon(): Promise<Client> {
-  const client = new Client(neonConfig);
+async function connectToNeon() {
+  // Cria o cliente passando a configuração apropriada ao deno-postgres
+  const client = new Client({
+    hostname: neonConfig.hostname,
+    port: neonConfig.port,
+    user: neonConfig.user,
+    password: neonConfig.password,
+    database: neonConfig.database,
+    tls: neonConfig.tls
+  });
   await client.connect();
   return client;
 }
@@ -96,11 +106,10 @@ async function saveCompanyToNeon(companyData: CompanyData): Promise<number> {
   try {
     console.log('🔍 [EMPRESA] Buscando empresa existente por CNPJ:', companyData.cnpj);
     
-    // Verificar se empresa já existe pelo CNPJ
-    const searchResult = await client.query(
-      'SELECT id FROM companies WHERE cnpj = $1',
-      [companyData.cnpj]
-    );
+    // Usamos queryObject para retornar um array de objetos
+    const searchResult = await client.queryObject('SELECT id FROM companies WHERE cnpj = $1', [
+      companyData.cnpj
+    ]);
 
     console.log('✅ [EMPRESA] Busca concluída. Empresa existente?', searchResult.rows.length > 0);
 
@@ -111,49 +120,35 @@ async function saveCompanyToNeon(companyData: CompanyData): Promise<number> {
       companyId = searchResult.rows[0].id;
       console.log('🔄 [EMPRESA] Atualizando empresa existente ID:', companyId);
       
-      await client.query(
-        `UPDATE companies SET 
-         name = $1, email = $2, domain = $3, phone = $4, updated_at = $5,
-         plan_contracted = $7, employee_count = $8, additional_agents = $9, ticket_package = $10
-         WHERE id = $6`,
-        [
-          companyData.name,
-          companyData.email,
-          companyData.domain,
-          companyData.phone,
-          new Date().toISOString(),
-          companyId,
-          companyData.plan_contracted,
-          companyData.employee_count,
-          companyData.additional_agents, // Pode ser null/undefined
-          companyData.ticket_package   // Pode ser null/undefined
-        ]
-      );
+      await client.queryObject(`UPDATE companies SET 
+         name = $1, email = $2, domain = $3, phone = $4, updated_at = $5
+         WHERE id = $6`, [
+        companyData.name,
+        companyData.email,
+        companyData.domain,
+        companyData.phone,
+        new Date().toISOString(),
+        companyId
+      ]);
       
       console.log(`✅ [EMPRESA] Empresa atualizada: ID ${companyId}`);
     } else {
       // Criar nova empresa
       console.log('➕ [EMPRESA] Criando nova empresa');
       
-      const insertResult = await client.query(
-        `INSERT INTO companies (name, email, cnpj, phone, domain, active, created_at, updated_at, plan_contracted, employee_count, additional_agents, ticket_package)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         RETURNING id`,
-        [
-          companyData.name,
-          companyData.email,
-          companyData.cnpj,
-          companyData.phone,
-          companyData.domain,
-          true,
-          new Date().toISOString(),
-          new Date().toISOString(),
-          companyData.plan_contracted,
-          companyData.employee_count,
-          companyData.additional_agents, // Pode ser null/undefined
-          companyData.ticket_package   // Pode ser null/undefined
-        ]
-      );
+      const insertResult = await client.queryObject(`INSERT INTO companies 
+         (name, email, cnpj, phone, domain, active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`, [
+        companyData.name,
+        companyData.email,
+        companyData.cnpj,
+        companyData.phone,
+        companyData.domain,
+        true,
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]);
       
       companyId = insertResult.rows[0].id;
       console.log(`✅ [EMPRESA] Nova empresa criada: ID ${companyId}`);
@@ -188,11 +183,9 @@ async function saveUserToNeon(userData: UserData): Promise<number> {
   try {
     console.log('🔍 [USUÁRIO] Buscando usuário existente por email:', userData.email);
     
-    // Verificar se usuário já existe pelo email
-    const searchResult = await client.query(
-      'SELECT id FROM users WHERE email = $1',
-      [userData.email]
-    );
+    const searchResult = await client.queryObject('SELECT id FROM users WHERE email = $1', [
+      userData.email
+    ]);
 
     console.log('✅ [USUÁRIO] Busca concluída. Usuário existente?', searchResult.rows.length > 0);
 
@@ -203,43 +196,38 @@ async function saveUserToNeon(userData: UserData): Promise<number> {
       userId = searchResult.rows[0].id;
       console.log('🔄 [USUÁRIO] Atualizando usuário existente ID:', userId);
       
-      await client.query(
-        `UPDATE users SET 
+      await client.queryObject(`UPDATE users SET 
          name = $1, username = $2, password = $3, role = $4, company_id = $5, updated_at = $6
-         WHERE id = $7`,
-        [
-          userData.name,
-          userData.username,
-          hashedPassword,
-          userData.role,
-          userData.company_id,
-          new Date().toISOString(),
-          userId
-        ]
-      );
+         WHERE id = $7`, [
+        userData.name,
+        userData.username,
+        hashedPassword,
+        userData.role,
+        userData.company_id,
+        new Date().toISOString(),
+        userId
+      ]);
       
       console.log(`✅ [USUÁRIO] Usuário atualizado: ID ${userId}`);
     } else {
       // Criar novo usuário
       console.log('➕ [USUÁRIO] Criando novo usuário');
       
-      const insertResult = await client.query(
-        `INSERT INTO users (name, email, username, password, role, company_id, active, ad_user, created_at, updated_at)
+      const insertResult = await client.queryObject(`INSERT INTO users 
+         (name, email, username, password, role, company_id, active, ad_user, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id`,
-        [
-          userData.name,
-          userData.email,
-          userData.username,
-          hashedPassword,
-          userData.role,
-          userData.company_id,
-          true,
-          false,
-          new Date().toISOString(),
-          new Date().toISOString()
-        ]
-      );
+         RETURNING id`, [
+        userData.name,
+        userData.email,
+        userData.username,
+        hashedPassword,
+        userData.role,
+        userData.company_id,
+        true,
+        false,
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]);
       
       userId = insertResult.rows[0].id;
       console.log(`✅ [USUÁRIO] Novo usuário criado: ID ${userId}`);
