@@ -158,9 +158,15 @@ const SuccessPage: React.FC = () => {
             )}
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
+              <a
+                href="https://app.ticketwise.com.br"
+                className="px-6 py-3 bg-purple-600 text-white font-medium rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Acessar Sistema
+              </a>
               <Link
                 to="/"
-                className="px-6 py-3 bg-purple-600 text-white font-medium rounded-md hover:bg-purple-700 transition-colors"
+                className="px-6 py-3 border border-purple-600 text-purple-600 font-medium rounded-md hover:bg-purple-50 transition-colors"
               >
                 Voltar ao Início
               </Link>

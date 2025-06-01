@@ -201,7 +201,7 @@ const RegisterPage: React.FC = () => {
                   </button>
 
                   <p className="text-center text-gray-600 mt-6">
-                    Já tem uma conta? <Link to="/login" className="text-purple-600 font-medium hover:text-purple-700">Faça login</Link>
+                    Já tem uma conta? <a href="https://app.ticketwise.com.br" className="text-purple-600 font-medium hover:text-purple-700">Faça login</a>
                   </p>
                 </form>
               </>

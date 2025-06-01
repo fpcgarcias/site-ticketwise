@@ -82,12 +82,12 @@ const Header: React.FC = () => {
           >
             Contato
           </Link>
-          <Link 
-            to="/login" 
+          <a 
+            href="https://app.ticketwise.com.br" 
             className="font-medium text-gray-700 hover:text-purple-600 transition-colors"
           >
             Login
-          </Link>
+          </a>
           <Link 
             to="/register" 
             className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
@@ -146,13 +146,13 @@ const Header: React.FC = () => {
             >
               Contato
             </Link>
-            <Link 
-              to="/login" 
+            <a 
+              href="https://app.ticketwise.com.br" 
               className="font-medium py-2 text-gray-700"
               onClick={closeMenu}
             >
               Login
-            </Link>
+            </a>
             <Link 
               to="/register" 
               className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center"
