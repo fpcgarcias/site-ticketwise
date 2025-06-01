@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, CheckCircle } from 'lucide-react';
-import { createCheckoutSession } from '../lib/stripe';
+import { createCheckoutSessionWithCustomerData } from '../lib/stripe';
 import { products, ProductId } from '../stripe-config';
 
 const RegisterPage: React.FC = () => {
@@ -15,11 +15,13 @@ const RegisterPage: React.FC = () => {
     firstName: '',
     lastName: '',
     companyName: '',
+    cnpj: '',
     email: '',
     password: '',
     confirmPassword: '',
-    plan: selectedPlan || 'basic',
+    plan: selectedPlan || 'basic_monthly',
     employees: '',
+    couponCode: '',
     agreeTerms: false
   });
 
@@ -47,7 +49,36 @@ const RegisterPage: React.FC = () => {
         throw new Error('Invalid plan selected');
       }
 
-      await createCheckoutSession(selectedProduct.priceId, selectedProduct.mode);
+      // Salvar dados do formulário no localStorage para uso na página de sucesso
+      localStorage.setItem('registrationData', JSON.stringify({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        companyName: formData.companyName,
+        cnpj: formData.cnpj,
+        employees: formData.employees,
+        plan: formData.plan,
+        couponCode: formData.couponCode
+      }));
+
+      // Dados do cliente para o Stripe (SEM A SENHA por segurança)
+      const customerData = {
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        cnpj: formData.cnpj,
+        razaoSocial: formData.companyName,
+        employee_count: formData.employees,
+        domain: '', // Será preenchido pelo backend baseado no email ou por campo separado
+        couponCode: formData.couponCode
+      };
+
+      await createCheckoutSessionWithCustomerData(
+        selectedProduct.priceId, 
+        selectedProduct.mode,
+        customerData,
+        true
+      );
     } catch (error) {
       console.error('Error creating checkout session:', error);
       alert('Ocorreu um erro ao processar seu pedido. Por favor, tente novamente.');
@@ -143,9 +174,10 @@ const RegisterPage: React.FC = () => {
                       onChange={handleChange}
                       required
                       minLength={8}
+                      maxLength={128}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Mínimo de 8 caracteres</p>
+                    <p className="text-xs text-gray-500 mt-1">Entre 8 e 128 caracteres</p>
                   </div>
 
                   <div className="mb-6">
@@ -180,12 +212,25 @@ const RegisterPage: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900 mb-6">Sobre sua Empresa</h1>
                 <form onSubmit={handleSubmit}>
                   <div className="mb-6">
-                    <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa</label>
+                    <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">Razão Social</label>
                     <input
                       type="text"
                       id="companyName"
                       name="companyName"
                       value={formData.companyName}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
+                    <input
+                      type="text"
+                      id="cnpj"
+                      name="cnpj"
+                      value={formData.cnpj}
                       onChange={handleChange}
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
@@ -212,6 +257,22 @@ const RegisterPage: React.FC = () => {
                   </div>
 
                   <div className="mb-6">
+                    <label htmlFor="couponCode" className="block text-sm font-medium text-gray-700 mb-1">
+                      Cupom de Desconto (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      id="couponCode"
+                      name="couponCode"
+                      value={formData.couponCode}
+                      onChange={handleChange}
+                      placeholder="Digite seu código de desconto"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Aplicaremos o desconto automaticamente se o cupom for válido</p>
+                  </div>
+
+                  <div className="mb-6">
                     <label htmlFor="plan" className="block text-sm font-medium text-gray-700 mb-1">Plano</label>
                     <select
                       id="plan"
@@ -221,9 +282,12 @@ const RegisterPage: React.FC = () => {
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                     >
-                      <option value="basic">Básico - R$119/mês</option>
-                      <option value="pro">Profissional - R$199/mês</option>
-                      <option value="enterprise">Enterprise - R$299/mês</option>
+                      <option value="basic_monthly">Básico Mensal - R$119/mês</option>
+                      <option value="basic_annual">Básico Anual - R$1.212/ano</option>
+                      <option value="pro_monthly">Profissional Mensal - R$199/mês</option>
+                      <option value="pro_annual">Profissional Anual - R$2.028/ano</option>
+                      <option value="enterprise_monthly">Enterprise Mensal - R$299/mês</option>
+                      <option value="enterprise_annual">Enterprise Anual - R$3.048/ano</option>
                     </select>
                   </div>
 

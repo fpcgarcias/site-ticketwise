@@ -180,7 +180,7 @@ const PricingPlans: React.FC = () => {
                 </div>
 
                 <Link
-                  to={`/register?plan=${plan.id}`}
+                  to={`/register?plan=${plan.id}${annual ? '_annual' : '_monthly'}`}
                   className={`block w-full py-3 px-4 rounded-lg text-center font-medium ${
                     plan.highlight
                       ? 'bg-purple-600 text-white hover:bg-purple-700'
