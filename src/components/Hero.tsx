@@ -25,7 +25,7 @@ const Hero: React.FC = () => {
               Atendimento ao cliente <span className="text-purple-600">mais eficiente</span> e organizado
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-xl">
-              O TicketWise otimiza o suporte técnico, centraliza comunicações e permite que você acompanhe tudo em um só lugar.
+              O Ticket Wise otimiza o suporte técnico, centraliza comunicações e permite que você acompanhe tudo em um só lugar.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-8">

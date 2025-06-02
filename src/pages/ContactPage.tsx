@@ -74,8 +74,8 @@ const ContactPage: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">Endereço</h3>
                     <p className="text-gray-600">
-                      Avenida Paulista, 1000<br />
-                      São Paulo, SP 01310-100<br />
+                      Avenida das Américas, 17500, Bloco 1/202<br />
+                      Rio de Janeiro, RJ 22790-704<br />
                       Brasil
                     </p>
                   </div>
@@ -88,7 +88,7 @@ const ContactPage: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">Telefone</h3>
                     <p className="text-gray-600">
-                      +55 (11) 3000-1234<br />
+                      +55 (21) 2042-2588<br />
                       Segunda a Sexta, 9h às 18h
                     </p>
                   </div>
@@ -101,8 +101,8 @@ const ContactPage: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">Email</h3>
                     <p className="text-gray-600">
-                      contato@ticketwise.com<br />
-                      suporte@ticketwise.com
+                      contato@ticketwise.com.br<br />
+                      suporte@ticketwise.com.br
                     </p>
                   </div>
                 </div>
@@ -279,20 +279,20 @@ const ContactPage: React.FC = () => {
           <div className="max-w-4xl mx-auto space-y-6">
             {[
               {
-                question: "Quanto tempo leva para implementar o TicketWise?",
-                answer: "A implementação do TicketWise é rápida e simples. Você pode começar a usar o sistema em questão de minutos. Para configurações mais personalizadas, nossa equipe de suporte está disponível para ajudá-lo."
+                question: "Quanto tempo leva para implementar o Ticket Wise?",
+                answer: "A implementação do Ticket Wise é rápida e simples. Você pode começar a usar o sistema em questão de minutos. Para configurações mais personalizadas, nossa equipe de suporte está disponível para ajudá-lo."
               },
               {
-                question: "O TicketWise oferece integração com outros sistemas?",
-                answer: "Sim, o TicketWise oferece integração com diversas ferramentas populares como Slack, Microsoft Teams, Google Workspace, Trello, GitHub, Jira, Zapier e muito mais. Se você precisar de uma integração específica, entre em contato conosco."
+                question: "O Ticket Wise oferece integração com outros sistemas?",
+                answer: "Sim, o Ticket Wise oferece integração com diversas ferramentas populares como Slack, Microsoft Teams, Google Workspace, Trello, GitHub, Jira, Zapier e muito mais. Se você precisar de uma integração específica, entre em contato conosco."
               },
               {
                 question: "Vocês oferecem treinamento para novos usuários?",
-                answer: "Sim, oferecemos treinamento completo para todos os novos clientes. Além disso, disponibilizamos uma base de conhecimento detalhada, tutoriais em vídeo e webinars regulares para ajudar sua equipe a aproveitar ao máximo o TicketWise."
+                answer: "Sim, oferecemos treinamento completo para todos os novos clientes. Além disso, disponibilizamos uma base de conhecimento detalhada, tutoriais em vídeo e webinars regulares para ajudar sua equipe a aproveitar ao máximo o Ticket Wise."
               },
               {
-                question: "O TicketWise é adequado para pequenas empresas?",
-                answer: "Absolutamente! O TicketWise foi projetado para ser escalável, atendendo desde pequenas empresas até grandes corporações. Nosso plano Básico é perfeito para pequenas equipes que estão começando a estruturar seu atendimento ao cliente."
+                question: "O Ticket Wise é adequado para pequenas empresas?",
+                answer: "Absolutamente! O Ticket Wise foi projetado para ser escalável, atendendo desde pequenas empresas até grandes corporações. Nosso plano Básico é perfeito para pequenas equipes que estão começando a estruturar seu atendimento ao cliente."
               }
             ].map((faq, index) => (
               <motion.div

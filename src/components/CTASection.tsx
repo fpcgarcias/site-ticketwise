@@ -11,7 +11,7 @@ const CTASection: React.FC = () => {
             Transforme seu atendimento ao cliente hoje mesmo
           </h2>
           <p className="text-xl text-purple-100 mb-8 max-w-3xl mx-auto">
-            Junte-se a milhares de empresas que já estão utilizando o TicketWise para proporcionar um atendimento excepcional e aumentar a satisfação dos clientes.
+            Junte-se a milhares de empresas que já estão utilizando o Ticket Wise para proporcionar um atendimento excepcional e aumentar a satisfação dos clientes.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link

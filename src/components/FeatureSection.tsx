@@ -82,7 +82,7 @@ const FeatureSection: React.FC = () => {
             Tudo o que você precisa para um suporte excepcional
           </h2>
           <p className="text-xl text-gray-600">
-            Conheça as principais ferramentas do TicketWise que transformarão seu atendimento ao cliente.
+            Conheça as principais ferramentas do Ticket Wise que transformarão seu atendimento ao cliente.
           </p>
         </div>
 

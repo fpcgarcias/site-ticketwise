@@ -40,7 +40,7 @@ const HowItWorks: React.FC = () => {
             Como Funciona
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Comece a usar o TicketWise em 4 passos simples
+            Comece a usar o Ticket Wise em 4 passos simples
           </h2>
           <p className="text-xl text-gray-600">
             Implementação rápida e fácil para que você possa focar no que realmente importa: atender seus clientes.

@@ -15,7 +15,7 @@ type Testimonial = {
 const testimonials: Testimonial[] = [
   {
     id: 1,
-    content: "O TicketWise transformou nosso atendimento ao cliente. Conseguimos reduzir o tempo de resposta em 45% e a satisfação dos clientes aumentou significativamente.",
+    content: "O Ticket Wise transformou nosso atendimento ao cliente. Conseguimos reduzir o tempo de resposta em 45% e a satisfação dos clientes aumentou significativamente.",
     author: "Mariana Silva",
     role: "Gerente de Suporte",
     company: "TechSolutions",
@@ -33,7 +33,7 @@ const testimonials: Testimonial[] = [
   },
   {
     id: 3,
-    content: "Implementamos o TicketWise há 6 meses e já vimos uma melhoria de 60% na organização dos atendimentos. A integração com IA nos ajuda a priorizar corretamente os casos.",
+    content: "Implementamos o Ticket Wise há 6 meses e já vimos uma melhoria de 60% na organização dos atendimentos. A integração com IA nos ajuda a priorizar corretamente os casos.",
     author: "Fernanda Costa",
     role: "CEO",
     company: "FutureTech",
@@ -54,7 +54,7 @@ const Testimonials: React.FC = () => {
             O que nossos clientes dizem
           </h2>
           <p className="text-xl text-gray-600">
-            Veja como o TicketWise está transformando o atendimento ao cliente em diversas empresas.
+            Veja como o Ticket Wise está transformando o atendimento ao cliente em diversas empresas.
           </p>
         </div>
 

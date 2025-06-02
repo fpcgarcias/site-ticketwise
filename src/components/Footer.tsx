@@ -94,18 +94,18 @@ const Footer: React.FC = () => {
               <li className="flex items-start">
                 <MapPin size={20} className="text-purple-500 mr-2 mt-1 flex-shrink-0" />
                 <span className="text-gray-400">
-                  Avenida Paulista, 1000<br />
-                  São Paulo, SP 01310-100
+                  Avenida das Anméricas, 17500 - Bloco 1/202<br />
+                  Rio de Janeiro, RJ 22790-704
                 </span>
               </li>
               <li className="flex items-center">
                 <Phone size={20} className="text-purple-500 mr-2 flex-shrink-0" />
-                <span className="text-gray-400">(11) 3000-1234</span>
+                <span className="text-gray-400">(21) 2042-2588</span>
               </li>
               <li className="flex items-center">
                 <Mail size={20} className="text-purple-500 mr-2 flex-shrink-0" />
-                <a href="mailto:contato@ticketwise.com" className="text-gray-400 hover:text-white transition-colors">
-                  contato@ticketwise.com
+                <a href="mailto:contato@ticketwise.com.br" className="text-gray-400 hover:text-white transition-colors">
+                  contato@ticketwise.com.br
                 </a>
               </li>
             </ul>
@@ -114,11 +114,11 @@ const Footer: React.FC = () => {
 
         <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-400 text-sm">
-            &copy; {currentYear} TicketWise. Todos os direitos reservados.
+            &copy; {currentYear} Ticket Wise. Todos os direitos reservados.
           </p>
           <div className="mt-4 md:mt-0">
             <Link to="#" className="text-gray-400 hover:text-white text-sm transition-colors">
-              Desenvolvido com ❤️ por TicketWise Team
+              Desenvolvido com ❤️ por Ticket Wise Team
             </Link>
           </div>
         </div>
