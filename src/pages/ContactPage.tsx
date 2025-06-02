@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mail, MapPin, Phone, Send } from 'lucide-react';
+import { Mail, MapPin, Phone, Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -12,7 +12,8 @@ const ContactPage: React.FC = () => {
     reason: 'general'
   });
   
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -22,11 +23,56 @@ const ContactPage: React.FC = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would normally handle the API call to submit the form
-    // For now, we'll just simulate success
-    setFormSubmitted(true);
+    setStatus('sending');
+    setErrorMessage('');
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-contact-form`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify(formData)
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erro ao enviar mensagem');
+      }
+
+      setStatus('success');
+      
+      // Resetar formulário após sucesso
+      setTimeout(() => {
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          company: '',
+          message: '',
+          reason: 'general'
+        });
+        setStatus('idle');
+      }, 3000);
+
+    } catch (error: any) {
+      console.error('Erro ao enviar formulário:', error);
+      setStatus('error');
+      setErrorMessage(error.message || 'Erro interno do servidor. Tente novamente mais tarde.');
+    }
+  };
+
+  const resetForm = () => {
+    setStatus('idle');
+    setErrorMessage('');
   };
 
   return (
@@ -138,13 +184,55 @@ const ContactPage: React.FC = () => {
               transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
               className="bg-white rounded-xl shadow-md p-8"
             >
-              {!formSubmitted ? (
+              {status === 'success' ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <CheckCircle2 size={32} className="text-green-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Mensagem Enviada!</h2>
+                  <p className="text-gray-600 mb-4">
+                    Obrigado por entrar em contato conosco.
+                  </p>
+                  <p className="text-gray-600 mb-8">
+                    Nossa equipe responderá em até <strong>24 horas úteis</strong>.
+                  </p>
+                  <button
+                    onClick={resetForm}
+                    className="bg-purple-600 text-white font-medium py-2 px-6 rounded-md hover:bg-purple-700 transition-colors"
+                  >
+                    Enviar outra mensagem
+                  </button>
+                </div>
+              ) : status === 'error' ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <AlertCircle size={32} className="text-red-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Erro ao Enviar</h2>
+                  <p className="text-gray-600 mb-4">
+                    {errorMessage}
+                  </p>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-orange-800">
+                      <strong>Contato direto:</strong><br />
+                      📧 contato@ticketwise.com.br<br />
+                      📞 (21) 2042-2588
+                    </p>
+                  </div>
+                  <button
+                    onClick={resetForm}
+                    className="bg-purple-600 text-white font-medium py-2 px-6 rounded-md hover:bg-purple-700 transition-colors"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : (
                 <>
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Envie uma mensagem</h2>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                       <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                        Nome completo
+                        Nome completo *
                       </label>
                       <input
                         type="text"
@@ -153,14 +241,15 @@ const ContactPage: React.FC = () => {
                         value={formData.name}
                         onChange={handleChange}
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        disabled={status === 'sending'}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                          Email
+                          Email *
                         </label>
                         <input
                           type="email"
@@ -169,7 +258,8 @@ const ContactPage: React.FC = () => {
                           value={formData.email}
                           onChange={handleChange}
                           required
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          disabled={status === 'sending'}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -182,7 +272,9 @@ const ContactPage: React.FC = () => {
                           name="phone"
                           value={formData.phone}
                           onChange={handleChange}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          disabled={status === 'sending'}
+                          placeholder="(11) 99999-9999"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                         />
                       </div>
                     </div>
@@ -197,20 +289,23 @@ const ContactPage: React.FC = () => {
                         name="company"
                         value={formData.company}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        disabled={status === 'sending'}
+                        placeholder="Nome da sua empresa"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
                     </div>
 
                     <div>
                       <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-1">
-                        Motivo do contato
+                        Motivo do contato *
                       </label>
                       <select
                         id="reason"
                         name="reason"
                         value={formData.reason}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        disabled={status === 'sending'}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       >
                         <option value="general">Informações gerais</option>
                         <option value="sales">Falar com vendas</option>
@@ -222,7 +317,7 @@ const ContactPage: React.FC = () => {
 
                     <div>
                       <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                        Mensagem
+                        Mensagem *
                       </label>
                       <textarea
                         id="message"
@@ -231,34 +326,34 @@ const ContactPage: React.FC = () => {
                         value={formData.message}
                         onChange={handleChange}
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        disabled={status === 'sending'}
+                        maxLength={2000}
+                        placeholder="Descreva como podemos ajudá-lo..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formData.message.length}/2000 caracteres
+                      </p>
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full bg-purple-600 text-white font-medium py-3 px-4 rounded-md hover:bg-purple-700 transition-colors flex items-center justify-center"
+                      disabled={status === 'sending'}
+                      className="w-full bg-purple-600 text-white font-medium py-3 px-4 rounded-md hover:bg-purple-700 transition-colors flex items-center justify-center disabled:bg-purple-400 disabled:cursor-not-allowed"
                     >
-                      Enviar Mensagem <Send size={16} className="ml-2" />
+                      {status === 'sending' ? (
+                        <>
+                          <Loader2 size={16} className="mr-2 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          Enviar Mensagem <Send size={16} className="ml-2" />
+                        </>
+                      )}
                     </button>
                   </form>
                 </>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Send size={24} className="text-green-600" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Mensagem Enviada!</h2>
-                  <p className="text-gray-600 mb-8">
-                    Obrigado por entrar em contato conosco. Nossa equipe responderá em até 24 horas úteis.
-                  </p>
-                  <button
-                    onClick={() => setFormSubmitted(false)}
-                    className="bg-purple-600 text-white font-medium py-2 px-6 rounded-md hover:bg-purple-700 transition-colors"
-                  >
-                    Enviar outra mensagem
-                  </button>
-                </div>
               )}
             </motion.div>
           </div>

@@ -122,7 +122,7 @@ const RegisterPage: React.FC = () => {
           <div className="bg-white rounded-xl shadow-md p-8">
             {step === 1 && (
               <>
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">Crie sua conta no TicketWise</h1>
+                <h1 className="text-2xl font-bold text-gray-900 mb-6">Crie sua conta no Ticket Wise</h1>
                 <form onSubmit={handleNext}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>

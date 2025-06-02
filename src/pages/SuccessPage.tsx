@@ -124,7 +124,7 @@ const SuccessPage: React.FC = () => {
                       <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mr-3 mt-0.5">
                         <span className="text-xs font-medium text-purple-600">2</span>
                       </div>
-                      <p className="text-gray-600">Aguarde o acesso ao sistema TicketWise (até 24h)</p>
+                      <p className="text-gray-600">Aguarde o acesso ao sistema Ticket Wise (até 24h)</p>
                     </div>
                     <div className="flex items-start">
                       <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mr-3 mt-0.5">

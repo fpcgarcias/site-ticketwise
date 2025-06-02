@@ -73,9 +73,9 @@ const Hero: React.FC = () => {
             <div className="relative max-w-lg w-full">
               <div className="absolute inset-0 bg-gradient-to-tr from-purple-600 to-purple-400 rounded-xl transform rotate-3 scale-105 opacity-20 shadow-lg" />
               <img 
-                src="https://images.pexels.com/photos/3184405/pexels-photo-3184405.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1" 
-                alt="Equipe usando o TicketWise" 
-                className="relative z-10 rounded-xl shadow-2xl w-full"
+                src="https://images.pexels.com/photos/3182834/pexels-photo-3182834.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1" 
+                alt="Equipe usando o Ticket Wise"
+                className="rounded-xl shadow-xl w-full"
               />
             </div>
           </motion.div>

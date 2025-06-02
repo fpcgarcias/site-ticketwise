@@ -21,7 +21,7 @@ const FeaturesPage: React.FC = () => {
               Recursos poderosos para transformar seu atendimento
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              Descubra todas as ferramentas do TicketWise que tornarão seu suporte técnico mais eficiente e seus clientes mais satisfeitos.
+              Descubra todas as ferramentas do Ticket Wise que tornarão seu suporte técnico mais eficiente e seus clientes mais satisfeitos.
             </p>
           </motion.div>
           
@@ -32,9 +32,9 @@ const FeaturesPage: React.FC = () => {
             className="max-w-5xl mx-auto"
           >
             <img 
-              src="https://images.pexels.com/photos/3182812/pexels-photo-3182812.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1" 
-              alt="Dashboard do TicketWise" 
-              className="rounded-xl shadow-xl w-full"
+              src="/dashboard-screenshot.png" 
+              alt="Dashboard do Ticket Wise"
+              className="w-full h-auto rounded-lg shadow-lg"
             />
           </motion.div>
         </div>
@@ -49,7 +49,7 @@ const FeaturesPage: React.FC = () => {
               Integração com outras ferramentas
             </h2>
             <p className="text-xl text-gray-600">
-              O TicketWise se conecta com as ferramentas que você já utiliza, centralizando todas as informações.
+              O Ticket Wise se conecta com as ferramentas que você já utiliza, centralizando todas as informações.
             </p>
           </div>
 
