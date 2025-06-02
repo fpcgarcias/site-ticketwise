@@ -67,14 +67,6 @@ const Header: React.FC = () => {
             Preços
           </Link>
           <Link 
-            to="/blog" 
-            className={`font-medium hover:text-purple-600 transition-colors ${
-              isActive('/blog') ? 'text-purple-600' : 'text-gray-700'
-            }`}
-          >
-            Blog
-          </Link>
-          <Link 
             to="/contact" 
             className={`font-medium hover:text-purple-600 transition-colors ${
               isActive('/contact') ? 'text-purple-600' : 'text-gray-700'
@@ -107,62 +99,51 @@ const Header: React.FC = () => {
       </div>
 
       {/* Mobile Navigation */}
-      {isMenuOpen && (
-        <div className="md:hidden bg-white shadow-xl">
-          <div className="container mx-auto px-4 py-4 flex flex-col space-y-4">
-            <Link 
-              to="/features" 
-              className={`font-medium py-2 ${
-                isActive('/features') ? 'text-purple-600' : 'text-gray-700'
-              }`}
-              onClick={closeMenu}
-            >
-              Funcionalidades
-            </Link>
-            <Link 
-              to="/pricing" 
-              className={`font-medium py-2 ${
-                isActive('/pricing') ? 'text-purple-600' : 'text-gray-700'
-              }`}
-              onClick={closeMenu}
-            >
-              Preços
-            </Link>
-            <Link 
-              to="/blog" 
-              className={`font-medium py-2 ${
-                isActive('/blog') ? 'text-purple-600' : 'text-gray-700'
-              }`}
-              onClick={closeMenu}
-            >
-              Blog
-            </Link>
-            <Link 
-              to="/contact" 
-              className={`font-medium py-2 ${
-                isActive('/contact') ? 'text-purple-600' : 'text-gray-700'
-              }`}
-              onClick={closeMenu}
-            >
-              Contato
-            </Link>
-            <a 
-              href="https://app.ticketwise.com.br" 
-              className="font-medium py-2 text-gray-700"
-              onClick={closeMenu}
-            >
-              Login
-            </a>
-            <Link 
-              to="/register" 
-              className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center"
-              onClick={closeMenu}
-            >
-              Começar Grátis
-            </Link>
-          </div>
-        </div>
-      )}
+      <div className={`md:hidden ${isMenuOpen ? 'block' : 'hidden'} absolute top-full left-0 right-0 bg-white shadow-lg border-t`}>
+        <nav className="container mx-auto px-4 py-4 flex flex-col space-y-4">
+          <Link 
+            to="/features" 
+            className={`font-medium hover:text-purple-600 transition-colors ${
+              isActive('/features') ? 'text-purple-600' : 'text-gray-700'
+            }`}
+            onClick={closeMenu}
+          >
+            Funcionalidades
+          </Link>
+          <Link 
+            to="/pricing" 
+            className={`font-medium hover:text-purple-600 transition-colors ${
+              isActive('/pricing') ? 'text-purple-600' : 'text-gray-700'
+            }`}
+            onClick={closeMenu}
+          >
+            Preços
+          </Link>
+          <Link 
+            to="/contact" 
+            className={`font-medium hover:text-purple-600 transition-colors ${
+              isActive('/contact') ? 'text-purple-600' : 'text-gray-700'
+            }`}
+            onClick={closeMenu}
+          >
+            Contato
+          </Link>
+          <a 
+            href="https://app.ticketwise.com.br" 
+            className="font-medium py-2 text-gray-700"
+            onClick={closeMenu}
+          >
+            Login
+          </a>
+          <Link 
+            to="/register" 
+            className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center"
+            onClick={closeMenu}
+          >
+            Começar Grátis
+          </Link>
+        </nav>
+      </div>
     </header>
   );
 };
