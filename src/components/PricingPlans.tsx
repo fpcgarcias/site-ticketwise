@@ -48,7 +48,7 @@ const plans: Plan[] = [
       { included: true, text: 'Automação de processos' },
       { included: false, text: 'Integração com IA' },
     ],
-    buttonText: 'Começar Agora',
+    buttonText: 'Escolher Plano',
   },
   {
     id: 'pro',
@@ -99,7 +99,7 @@ const plans: Plan[] = [
       { included: true, text: 'Automação de processos' },
       { included: true, text: 'Integração com IA' },
     ],
-    buttonText: 'Fale Conosco',
+    buttonText: 'Escolher Plano',
   },
 ];
 

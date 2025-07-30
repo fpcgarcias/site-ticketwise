@@ -47,7 +47,7 @@ const features: Feature[] = [
   {
     icon: <Settings className="h-10 w-10 text-purple-600" />,
     title: "Integração com IA",
-    description: "Utilize inteligência artificial para analisar tickets, sugerir respostas e priorizar atendimentos automaticamente."
+    description: "IA inteligente que analisa automaticamente as prioridades dos tickets e detecta quando um chamado deve ser reaberto após resposta do cliente."
   }
 ];
 
