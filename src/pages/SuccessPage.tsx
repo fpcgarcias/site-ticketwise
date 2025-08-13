@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 const SuccessPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('');
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  
-  const sessionId = searchParams.get('session_id');
+  const [message, setMessage] = useState('Processando seu cadastro...');
+  const navigate = useNavigate();
+
+  const baseUrl = 'https://www.ticketwise.com.br';
 
   useEffect(() => {
     const saveRegistrationData = async () => {

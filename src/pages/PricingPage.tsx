@@ -2,6 +2,8 @@ import React from 'react';
 import PricingPlans from '../components/PricingPlans';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { products } from '../stripe-config';
 
 const comparisons = [
   {
@@ -47,8 +49,47 @@ const comparisons = [
 ];
 
 const PricingPage: React.FC = () => {
+  const baseUrl = 'https://www.ticketwise.com.br';
+  const title = 'Planos e Preços | Ticket Wise';
+  const description = 'Planos mensais e anuais do Ticket Wise para empresas de todos os portes. Escolha o ideal para o seu crescimento.';
+  const url = `${baseUrl}/pricing`;
+  const image = `${baseUrl}/og-image.jpg`;
+
+  const offers = Object.entries(products)
+    .filter(([_, p]) => p.mode === 'subscription')
+    .map(([key, p]) => ({
+      '@type': 'Offer',
+      name: p.name,
+      price: (p.amount / 100).toFixed(2),
+      priceCurrency: 'BRL',
+      url,
+      sku: key
+    }));
+
+  const offerCatalogJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'OfferCatalog',
+    name: 'Planos Ticket Wise',
+    url,
+    itemListElement: offers
+  };
+
   return (
     <div className="pt-20">
+      <Helmet>
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <link rel="canonical" href={url} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:url" content={url} />
+        <meta property="og:image" content={image} />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={image} />
+        <script type="application/ld+json">{JSON.stringify(offerCatalogJsonLd)}</script>
+      </Helmet>
+
       <section className="py-16 md:py-24 bg-purple-50">
         <div className="container mx-auto px-4 md:px-6">
           <motion.div

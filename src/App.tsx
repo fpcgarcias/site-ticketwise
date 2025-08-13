@@ -15,10 +15,27 @@ import CookiesPage from './pages/CookiesPage';
 import SuccessPage from './pages/SuccessPage';
 import NotFoundPage from './pages/NotFoundPage';
 import './index.css';
+import { Helmet } from 'react-helmet-async';
 
 function App() {
+  const siteName = 'Ticket Wise';
+  const siteUrl = 'https://www.ticketwise.com.br';
+  const defaultDescription = 'Ticket Wise: Plataforma de gestão de tickets e suporte ao cliente para empresas que querem crescer com eficiência.';
+  const defaultImage = `${siteUrl}/og-image.jpg`;
+
   return (
     <Router>
+      <Helmet>
+        <title>{siteName}</title>
+        <meta name="description" content={defaultDescription} />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#6d28d9" />
+        <meta property="og:site_name" content={siteName} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={defaultImage} />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:image" content={defaultImage} />
+      </Helmet>
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-grow">

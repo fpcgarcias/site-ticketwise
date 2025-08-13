@@ -1,29 +1,25 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { ArrowRight, CheckCircle } from 'lucide-react';
-import { createCheckoutSessionWithCustomerData } from '../lib/stripe';
-import { products, ProductId } from '../stripe-config';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { createCheckoutSession } from '../lib/stripe';
 
 const RegisterPage: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const selectedPlan = queryParams.get('plan') as ProductId | null;
-
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    name: '',
+    email: '',
     companyName: '',
     cnpj: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    plan: selectedPlan || 'basic_monthly',
     employees: '',
-    couponCode: '',
-    agreeTerms: false
+    phone: '',
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const baseUrl = 'https://www.ticketwise.com.br';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;

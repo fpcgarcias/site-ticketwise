@@ -1,16 +1,60 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Cookie, Shield, Settings, Info } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { Cookie, Shield, CheckCircle2, Info, ExternalLink, Settings } from 'lucide-react';
 
 const CookiesPage: React.FC = () => {
+  const baseUrl = 'https://www.ticketwise.com.br';
+  
   return (
-    <div className="pt-20">
-      {/* Header Section */}
-      <section className="py-16 md:py-24 bg-orange-50">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className="flex justify-center mb-6">
-              <div className="bg-orange-100 p-4 rounded-full">
+    <>
+      <Helmet>
+        <title>Política de Cookies - Ticket Wise | Uso de Cookies e Armazenamento Local</title>
+        <meta name="description" content="Política de cookies da Ticket Wise: informações sobre o uso de cookies essenciais, armazenamento local e nossa política transparente sobre cookies." />
+        <link rel="canonical" href={`${baseUrl}/cookies`} />
+        
+        <meta property="og:title" content="Política de Cookies - Ticket Wise | Uso de Cookies e Armazenamento Local" />
+        <meta property="og:description" content="Política de cookies da Ticket Wise: informações sobre o uso de cookies essenciais, armazenamento local e nossa política transparente sobre cookies." />
+        <meta property="og:url" content={`${baseUrl}/cookies`} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={`${baseUrl}/og-image.jpg`} />
+        
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Política de Cookies - Ticket Wise | Uso de Cookies e Armazenamento Local" />
+        <meta name="twitter:description" content="Política de cookies da Ticket Wise: informações sobre o uso de cookies essenciais, armazenamento local e nossa política transparente sobre cookies." />
+        <meta name="twitter:image" content={`${baseUrl}/og-image.jpg`} />
+
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Política de Cookies - Ticket Wise",
+            "description": "Política detalhada sobre o uso de cookies e armazenamento local no site institucional da Ticket Wise.",
+            "url": `${baseUrl}/cookies`,
+            "dateModified": "2024-12-15",
+            "datePublished": "2024-12-15",
+            "publisher": {
+              "@type": "Organization",
+              "name": "Ticket Wise",
+              "url": baseUrl
+            },
+            "breadcrumb": {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "Home", "item": baseUrl},
+                {"@type": "ListItem", "position": 2, "name": "Cookies", "item": `${baseUrl}/cookies`}
+              ]
+            }
+          })}
+        </script>
+      </Helmet>
+
+      <div className="pt-20">
+        {/* Header Section */}
+        <section className="py-16 md:py-24 bg-orange-50">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center max-w-4xl mx-auto">
+              <div className="flex justify-center mb-6">
                 <Cookie className="h-12 w-12 text-orange-600" />
               </div>
             </div>
@@ -33,7 +77,6 @@ const CookiesPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
       </section>
 
       {/* Cookie Content */}
@@ -302,7 +345,8 @@ const CookiesPage: React.FC = () => {
         </div>
       </section>
     </div>
+  </>
   );
 };
 
-export default CookiesPage; 
+export default CookiesPage;
