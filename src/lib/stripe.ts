@@ -1,5 +1,6 @@
 import { loadStripe } from '@stripe/stripe-js';
 import { products } from '../stripe-config';
+import { api } from './api';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
@@ -47,21 +48,14 @@ export async function createCheckoutSession(priceId: string, mode: 'payment' | '
     throw new Error('Failed to load Stripe');
   }
 
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({
-      price_id: priceId,
-      success_url: `${window.location.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${window.location.origin}/pricing`,
-      mode,
-    }),
+  const response = await api.createCheckoutSession({
+    price_id: priceId,
+    success_url: `${window.location.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${window.location.origin}/pricing`,
+    mode,
   });
 
-  const { sessionId, url, error } = await response.json();
+  const { sessionId, url, error } = response;
 
   if (error) {
     throw new Error(error);
@@ -99,11 +93,7 @@ export async function createCheckoutSessionWithCustomerData(
     throw new Error('Failed to load Stripe');
   }
 
-  // Sempre incluir headers básicos (inclusive Authorization)
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-  };
+  // Headers não são mais necessários pois a API cuida da autenticação
 
   const body: any = {
     price_id: priceId,
@@ -117,21 +107,7 @@ export async function createCheckoutSessionWithCustomerData(
   console.log('🚀 Enviando dados para checkout:', body);
   console.log('🎟️ Cupom no body:', body.customer_data?.couponCode);
 
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  console.log('Response status:', response.status);
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Erro na response:', errorText);
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-  }
-
-  const responseData = await response.json();
+  const responseData = await api.createCheckoutSession(body);
   console.log('Response data:', responseData);
 
   const { sessionId, url, error } = responseData;
@@ -158,19 +134,7 @@ export async function createCheckoutSessionWithCustomerData(
 // Buscar produtos do Stripe dinamicamente
 export async function fetchStripeProducts(): Promise<StripeProduct[]> {
   try {
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-products`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await api.getStripeProducts();
     return data.products || [];
   } catch (error) {
     console.error('Erro ao buscar produtos do Stripe:', error);
@@ -182,23 +146,7 @@ export async function fetchStripeProducts(): Promise<StripeProduct[]> {
 // Buscar preços do Stripe dinamicamente
 export async function fetchStripePrices(productId?: string): Promise<StripePrice[]> {
   try {
-    const url = productId 
-      ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-prices?product_id=${productId}`
-      : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-prices`;
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await api.getStripePrices(productId);
     return data.prices || [];
   } catch (error) {
     console.error('Erro ao buscar preços do Stripe:', error);

@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, ChevronDown } from 'lucide-react';
+import { Menu, X, ChevronDown, User, LogOut, Settings } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import Logo from './Logo';
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, logout, isAuthenticated } = useAuth();
 
   const handleScroll = () => {
     if (window.scrollY > 10) {
@@ -29,6 +32,20 @@ const Header: React.FC = () => {
 
   const closeMenu = () => {
     setIsMenuOpen(false);
+    setIsUserMenuOpen(false);
+  };
+
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen(!isUserMenuOpen);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      closeMenu();
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
   };
 
   const isActive = (path: string) => {
@@ -74,18 +91,70 @@ const Header: React.FC = () => {
           >
             Contato
           </Link>
+          
+          {/* App Access Button */}
           <a 
             href="https://app.ticketwise.com.br" 
-            className="font-medium text-gray-700 hover:text-purple-600 transition-colors"
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-blue-600 text-white font-medium py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
           >
-            Login
+            Acesse o APP
           </a>
-          <Link 
-            to="/register" 
-            className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
-          >
-            Começar Grátis
-          </Link>
+          
+          {/* Authentication Section */}
+          {isAuthenticated ? (
+            <div className="relative">
+              <button
+                onClick={toggleUserMenu}
+                className="flex items-center space-x-2 font-medium text-gray-700 hover:text-purple-600 transition-colors"
+              >
+                <User size={20} />
+                <span>{user?.name}</span>
+                <ChevronDown size={16} />
+              </button>
+              
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border z-50">
+                  <div className="py-1">
+                    <div className="px-4 py-2 text-sm text-gray-500 border-b">
+                      {user?.email}
+                    </div>
+                    <Link
+                      to="/dashboard"
+                      onClick={closeMenu}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <Settings size={16} className="mr-2" />
+                      Painel de Controle
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <LogOut size={16} className="mr-2" />
+                      Sair
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <Link 
+                to="/login" 
+                className="font-medium text-gray-700 hover:text-purple-600 transition-colors"
+              >
+                Login
+              </Link>
+              <Link 
+                to="/register" 
+                className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Começar Grátis
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* Mobile Menu Button */}
@@ -128,20 +197,52 @@ const Header: React.FC = () => {
           >
             Contato
           </Link>
+          
+          {/* App Access Button - Mobile */}
           <a 
             href="https://app.ticketwise.com.br" 
-            className="font-medium py-2 text-gray-700"
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-blue-600 text-white font-medium py-2 px-4 rounded-md text-center hover:bg-blue-700 transition-colors"
             onClick={closeMenu}
           >
-            Login
+            Acesse o APP
           </a>
-          <Link 
-            to="/register" 
-            className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center"
-            onClick={closeMenu}
-          >
-            Começar Grátis
-          </Link>
+          
+          {/* Mobile Authentication Section */}
+          {isAuthenticated ? (
+            <div className="border-t pt-4">
+              <div className="flex items-center space-x-2 mb-2">
+                <User size={20} className="text-gray-600" />
+                <span className="font-medium text-gray-700">{user?.name}</span>
+              </div>
+              <div className="text-sm text-gray-500 mb-3">{user?.email}</div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center w-full text-left font-medium text-red-600 hover:text-red-700"
+              >
+                <LogOut size={16} className="mr-2" />
+                Sair
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link 
+                to="/login" 
+                className="font-medium py-2 text-gray-700"
+                onClick={closeMenu}
+              >
+                Login
+              </Link>
+              <Link 
+                to="/register" 
+                className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center"
+                onClick={closeMenu}
+              >
+                Começar Grátis
+              </Link>
+            </>
+          )}
         </nav>
       </div>
     </header>

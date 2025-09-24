@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { getProductByPriceId } from '../lib/stripe';
 
 type Subscription = {
@@ -19,26 +19,28 @@ export function useSubscription() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    async function getSubscription() {
+    const fetchSubscription = async () => {
       try {
-        const { data, error } = await supabase
-          .from('stripe_user_subscriptions')
-          .select('*')
-          .maybeSingle();
-
-        if (error) {
-          throw error;
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch('/api/subscription');
+        
+        if (!response.ok) {
+          throw new Error('Erro ao buscar dados da assinatura');
         }
-
-        setSubscription(data);
+        
+        const data = await response.json();
+        setSubscription(data.subscription);
+        setProduct(data.product);
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to fetch subscription'));
+        setError(err as Error);
       } finally {
         setLoading(false);
       }
-    }
+    };
 
-    getSubscription();
+    fetchSubscription();
   }, []);
 
   const product = subscription?.price_id ? getProductByPriceId(subscription.price_id) : null;

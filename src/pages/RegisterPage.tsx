@@ -1,25 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet-async';
+import React, { useState } from 'react';
 import { ArrowRight, CheckCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { createCheckoutSession } from '../lib/stripe';
+import { Link } from 'react-router-dom';
+import { createCheckoutSessionWithCustomerData } from '../lib/stripe';
+import { products, ProductId } from '../stripe-config';
 
 const RegisterPage: React.FC = () => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     companyName: '',
     cnpj: '',
     employees: '',
     phone: '',
+    plan: '',
+    couponCode: '',
+    agreeTerms: false,
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
-
-  const baseUrl = 'https://www.ticketwise.com.br';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -40,9 +40,16 @@ const RegisterPage: React.FC = () => {
     e.preventDefault();
     
     try {
+      // Validar se um plano foi selecionado
+      if (!formData.plan) {
+        setError('Por favor, selecione um plano antes de continuar.');
+        return;
+      }
+
       const selectedProduct = products[formData.plan as ProductId];
       if (!selectedProduct) {
-        throw new Error('Invalid plan selected');
+        setError('Plano selecionado é inválido. Por favor, selecione um plano válido.');
+        return;
       }
 
       // Salvar dados do formulário no localStorage para uso na página de sucesso
@@ -278,6 +285,7 @@ const RegisterPage: React.FC = () => {
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                     >
+                      <option value="">Selecione um plano</option>
                       <option value="basic_monthly">Básico Mensal - R$119/mês</option>
                       <option value="basic_annual">Básico Anual - R$1.212/ano</option>
                       <option value="pro_monthly">Profissional Mensal - R$199/mês</option>

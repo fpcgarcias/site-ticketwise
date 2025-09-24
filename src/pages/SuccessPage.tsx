@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useSearchParams, Link } from 'react-router-dom';
+import { api } from '../lib/api';
 
 const SuccessPage: React.FC = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processando seu cadastro...');
-  const navigate = useNavigate();
-
-  const baseUrl = 'https://www.ticketwise.com.br';
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get('session_id');
 
   useEffect(() => {
     const saveRegistrationData = async () => {
@@ -31,30 +30,11 @@ const SuccessPage: React.FC = () => {
       try {
         const registrationData = JSON.parse(registrationDataStr);
         
-        // Chamar função serverless para salvar no Neon
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-company-registration`,
-          {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
-              session_id: sessionId,
-              registration_data: registrationData
-            })
-          }
-        );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          setStatus('error');
-          setMessage(result.error || 'Erro ao salvar dados no backend');
-          return;
-        }
+        // Chamar API para salvar dados da empresa
+        const result = await api.registerCompany({
+          session_id: sessionId,
+          registration_data: registrationData
+        });
 
         setStatus('success');
         setMessage(result.message || 'Dados salvos com sucesso no sistema');
