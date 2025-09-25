@@ -91,16 +91,16 @@ const ContactPage: React.FC = () => {
               "name": "Ticket Wise",
               "contactPoint": {
                 "@type": "ContactPoint",
-                "telephone": "+55-11-99999-9999",
+                "telephone": "+55-21-3955-0345",
                 "contactType": "customer service",
                 "availableLanguage": "Portuguese"
               },
               "address": {
                 "@type": "PostalAddress",
-                "streetAddress": "Rua Exemplo, 123",
-                "addressLocality": "São Paulo",
-                "addressRegion": "SP",
-                "postalCode": "01234-567",
+                "streetAddress": "Rua Visconde de Pirajá, 414 - Sala 718 | Ipanema",
+                "addressLocality": "Rio de Janeiro",
+                "addressRegion": "RJ",
+                "postalCode": "22410-905",
                 "addressCountry": "BR"
               }
             }

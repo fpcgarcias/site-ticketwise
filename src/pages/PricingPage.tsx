@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { products } from '../stripe-config';
+import { useAuth } from '../contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 
 const comparisons = [
   {
@@ -49,9 +51,15 @@ const comparisons = [
 ];
 
 const PricingPage: React.FC = () => {
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isLoggedInUser = user && searchParams.get('action') === 'subscribe';
+  
   const baseUrl = 'https://www.ticketwise.com.br';
-  const title = 'Planos e Preços | Ticket Wise';
-  const description = 'Planos mensais e anuais do Ticket Wise para empresas de todos os portes. Escolha o ideal para o seu crescimento.';
+  const title = isLoggedInUser ? 'Contratar Plano | Ticket Wise' : 'Planos e Preços | Ticket Wise';
+  const description = isLoggedInUser 
+    ? 'Contrate um plano do Ticket Wise para começar a usar nossa plataforma.'
+    : 'Planos mensais e anuais do Ticket Wise para empresas de todos os portes. Escolha o ideal para o seu crescimento.';
   const url = `${baseUrl}/pricing`;
   const image = `${baseUrl}/og-image.jpg`;
 
@@ -99,13 +107,16 @@ const PricingPage: React.FC = () => {
             className="text-center max-w-4xl mx-auto"
           >
             <span className="inline-block px-3 py-1 text-sm font-medium rounded-full bg-purple-100 text-purple-700 mb-4">
-              Preços
+              {isLoggedInUser ? 'Contratar Plano' : 'Preços'}
             </span>
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-              Planos que crescem com seu negócio
+              {isLoggedInUser ? 'Escolha seu plano e comece agora' : 'Planos que crescem com seu negócio'}
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              Escolha o plano ideal para suas necessidades atuais e mude facilmente conforme sua empresa cresce.
+              {isLoggedInUser 
+                ? 'Você está logado! Escolha um plano para ativar sua conta e começar a usar o Ticket Wise.'
+                : 'Escolha o plano ideal para suas necessidades atuais e mude facilmente conforme sua empresa cresce.'
+              }
             </p>
           </motion.div>
         </div>

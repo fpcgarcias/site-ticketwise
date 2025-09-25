@@ -113,24 +113,24 @@ class ApiClient {
 
   // Registrar usuário
   async register(data: RegisterData): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>('/auth/register', {
+    const response = await this.request<{ success: boolean; data: AuthResponse }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
 
-    this.saveTokens(response.accessToken, response.refreshToken);
-    return response;
+    this.saveTokens(response.data.accessToken, response.data.refreshToken);
+    return response.data;
   }
 
   // Login
   async login(data: LoginData): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>('/auth/login', {
+    const response = await this.request<{ success: boolean; data: AuthResponse }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     });
 
-    this.saveTokens(response.accessToken, response.refreshToken);
-    return response;
+    this.saveTokens(response.data.accessToken, response.data.refreshToken);
+    return response.data;
   }
 
   // Logout
@@ -180,11 +180,27 @@ class ApiClient {
     return !!this.accessToken;
   }
 
+  // Verificar se usuário existe
+  async checkUser(email: string): Promise<any> {
+    return this.request('/auth/check-user', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  }
+
+  // Registro pré-checkout (usuário + empresa)
+  async preCheckoutRegister(userData: any, companyData: any): Promise<any> {
+    return this.request('/auth/pre-checkout-register', {
+      method: 'POST',
+      body: JSON.stringify({ userData, companyData })
+    });
+  }
+
   // Registrar empresa
   async registerCompany(data: any): Promise<any> {
     return this.request('/company/register', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(data)
     });
   }
 

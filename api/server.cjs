@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
-require('dotenv').config();
+const { neon } = require('@neondatabase/serverless');
+require('dotenv').config({ path: '../.env' });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,16 +20,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Conexão com banco de dados
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
-
-// Testar conexão
-pool.connect()
-  .then(() => console.log('✅ Conectado ao Neon Database'))
-  .catch(err => console.error('❌ Erro ao conectar ao banco:', err));
+// Conexão com banco de dados (Neon Serverless)
+const sql = neon(process.env.DATABASE_URL);
+(async () => {
+  try {
+    await sql`SELECT 1`;
+    console.log('✅ Conectado ao Neon Database');
+  } catch (err) {
+    console.error('❌ Erro ao conectar ao banco:', err);
+  }
+})();
 
 // Rotas públicas
 app.get('/health', (req, res) => {
@@ -44,6 +44,7 @@ app.get('/health', (req, res) => {
 // Importar e usar rotas
 const authRoutes = require('./routes/auth.cjs');
 const stripeRoutes = require('./routes/stripe.cjs');
+const subscriptionRoutes = require('./routes/subscription.cjs');
 const companyRoutes = require('./routes/company.cjs');
 const contactRoutes = require('./routes/contact.cjs');
 
@@ -55,7 +56,11 @@ app.use('/api/contact', contactRoutes);
 
 // Rotas protegidas
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/company', companyRoutes);
+
+// Log das rotas registradas
+console.log('🔐 Subscription endpoints: http://localhost:3001/api/subscription/*');
 
 // Middleware de tratamento de erros
 app.use((error, req, res, next) => {
@@ -95,18 +100,12 @@ app.use('*', (req, res) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🛑 Recebido SIGTERM, encerrando servidor...');
-  pool.end(() => {
-    console.log('📦 Pool de conexões encerrado');
-    process.exit(0);
-  });
+  process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('🛑 Recebido SIGINT, encerrando servidor...');
-  pool.end(() => {
-    console.log('📦 Pool de conexões encerrado');
-    process.exit(0);
-  });
+  process.exit(0);
 });
 
 // Iniciar servidor

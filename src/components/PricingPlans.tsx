@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 type PlanFeature = {
   included: boolean;
@@ -113,7 +114,9 @@ const ticketPackages = [
 ];
 
 const PricingPlans: React.FC = () => {
+  const { user } = useAuth();
   const [annual, setAnnual] = useState(true);
+  const isLoggedInUser = !!user;
 
   return (
     <section className="py-16 md:py-24 bg-white" id="pricing">
@@ -180,14 +183,17 @@ const PricingPlans: React.FC = () => {
                 </div>
 
                 <Link
-                  to={`/register?plan=${plan.id}${annual ? '_annual' : '_monthly'}`}
+                  to={isLoggedInUser 
+                    ? `/checkout?plan=${plan.id}${annual ? '_annual' : '_monthly'}` 
+                    : `/register?plan=${plan.id}${annual ? '_annual' : '_monthly'}`
+                  }
                   className={`block w-full py-3 px-4 rounded-lg text-center font-medium ${
                     plan.highlight
                       ? 'bg-purple-600 text-white hover:bg-purple-700'
                       : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                   } transition-colors mb-6`}
                 >
-                  {plan.buttonText}
+                  {isLoggedInUser ? 'Contratar Agora' : plan.buttonText}
                 </Link>
 
                 <div className="border-t border-gray-200 pt-6">

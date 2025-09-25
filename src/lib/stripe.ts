@@ -1,6 +1,13 @@
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js/pure';
 import { products } from '../stripe-config';
 import { api } from './api';
+
+// Desabilita sinais avançados de fraude apenas em desenvolvimento para evitar chamadas ao m.stripe.com
+if (import.meta.env.DEV) {
+  // setLoadParameters é exposto na variante "pure" como propriedade da função loadStripe
+  // @ts-ignore - a tipagem pode não expor essa propriedade dependendo da versão
+  loadStripe.setLoadParameters?.({ advancedFraudSignals: false });
+}
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 

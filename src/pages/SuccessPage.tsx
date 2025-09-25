@@ -2,52 +2,71 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const SuccessPage: React.FC = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('Processando seu cadastro...');
+  const [message, setMessage] = useState('Processando sua assinatura...');
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState<any>(null);
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
+  const { user } = useAuth();
 
   useEffect(() => {
-    const saveRegistrationData = async () => {
+    const processPayment = async () => {
       if (!sessionId) {
         setStatus('error');
         setMessage('Session ID não encontrado na URL');
         return;
       }
 
-      // Recuperar dados do formulário salvos no sessionStorage
-      const registrationDataStr = sessionStorage.getItem('registrationData');
-      
-      if (!registrationDataStr) {
-        setStatus('error');
-        setMessage('Dados do registro não encontrados. Por favor, tente novamente.');
-        return;
-      }
-
       try {
-        const registrationData = JSON.parse(registrationDataStr);
+        console.log('🔄 Processando pagamento para session:', sessionId);
         
-        // Chamar API para salvar dados da empresa
-        const result = await api.registerCompany({
-          session_id: sessionId,
-          registration_data: registrationData
+        // Pegar dados de registro do localStorage ANTES de processar
+        const registrationData = localStorage.getItem('registrationData');
+        let userData = null;
+        if (registrationData) {
+          userData = JSON.parse(registrationData);
+          console.log('📋 Dados de registro encontrados:', userData);
+        }
+        
+        // Processar sessão do Stripe (funciona para usuários logados E novos usuários)
+        const response = await fetch('http://localhost:3001/api/stripe/process-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            registration_data: userData // Enviar dados do formulário
+          })
         });
 
-        setStatus('success');
-        setMessage(result.message || 'Dados salvos com sucesso no sistema');
-        setCompanyId(result.company_id);
-        sessionStorage.removeItem('registrationData');
+        const result = await response.json();
+        
+        if (result.success) {
+          setStatus('success');
+          setMessage('Assinatura ativada com sucesso!');
+          setSubscriptionData(result.session);
+          
+          // Limpar dados de registro se existirem
+          localStorage.removeItem('registrationData');
+          
+          console.log('✅ Pagamento processado:', result);
+        } else {
+          throw new Error(result.error || 'Erro ao processar pagamento');
+        }
+        
       } catch (error) {
-        console.error('❌ Erro ao salvar dados:', error);
+        console.error('❌ Erro ao processar pagamento:', error);
         setStatus('error');
-        setMessage('Erro de conexão ao salvar dados');
+        setMessage('Erro ao processar sua assinatura. Nossa equipe foi notificada.');
       }
     };
 
-    saveRegistrationData();
+    processPayment();
   }, [sessionId]);
 
   return (

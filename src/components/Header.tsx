@@ -92,16 +92,6 @@ const Header: React.FC = () => {
             Contato
           </Link>
           
-          {/* App Access Button */}
-          <a 
-            href="https://app.ticketwise.com.br" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-blue-600 text-white font-medium py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Acesse o APP
-          </a>
-          
           {/* Authentication Section */}
           {isAuthenticated ? (
             <div className="relative">
@@ -153,6 +143,16 @@ const Header: React.FC = () => {
               >
                 Começar Grátis
               </Link>
+              
+              {/* App Access Button */}
+              <a 
+                href="https://app.ticketwise.com.br" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Acesse o APP
+              </a>
             </>
           )}
         </nav>
@@ -198,17 +198,6 @@ const Header: React.FC = () => {
             Contato
           </Link>
           
-          {/* App Access Button - Mobile */}
-          <a 
-            href="https://app.ticketwise.com.br" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-blue-600 text-white font-medium py-2 px-4 rounded-md text-center hover:bg-blue-700 transition-colors"
-            onClick={closeMenu}
-          >
-            Acesse o APP
-          </a>
-          
           {/* Mobile Authentication Section */}
           {isAuthenticated ? (
             <div className="border-t pt-4">
@@ -241,6 +230,17 @@ const Header: React.FC = () => {
               >
                 Começar Grátis
               </Link>
+              
+              {/* App Access Button - Mobile */}
+              <a 
+                href="https://app.ticketwise.com.br" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="bg-purple-600 text-white font-medium py-2 px-4 rounded-md text-center hover:bg-purple-700 transition-colors"
+                onClick={closeMenu}
+              >
+                Acesse o APP
+              </a>
             </>
           )}
         </nav>

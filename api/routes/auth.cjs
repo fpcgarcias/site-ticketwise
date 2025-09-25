@@ -1,4 +1,6 @@
 const express = require('express');
+const { neon } = require('@neondatabase/serverless');
+require('dotenv').config({ path: '../../.env' });
 const { 
   registerUser, 
   loginUser, 
@@ -6,6 +8,9 @@ const {
   logoutUser,
   authenticateToken 
 } = require('../middleware/auth.cjs');
+
+// Configurar conexão com Neon
+const sql = neon(process.env.DATABASE_URL);
 
 const router = express.Router();
 
@@ -240,19 +245,16 @@ router.post('/change-password', authenticateToken, async (req, res) => {
       });
     }
 
-    const { Pool } = require('pg');
+    const { neon } = require('@neondatabase/serverless');
     const { verifyPassword, hashPassword } = require('../middleware/auth');
     
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-    });
+    const sql = neon(process.env.DATABASE_URL);
 
     // Buscar senha atual
     const userQuery = 'SELECT password_hash FROM users WHERE id = $1';
-    const userResult = await pool.query(userQuery, [req.user.id]);
+    const result = await sql`SELECT password_hash FROM users WHERE id = ${req.user.id}`;
     
-    if (userResult.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Usuário não encontrado'
@@ -260,7 +262,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     }
 
     // Verificar senha atual
-    const isValidPassword = await verifyPassword(currentPassword, userResult.rows[0].password_hash);
+    const isValidPassword = await verifyPassword(currentPassword, result[0].password_hash);
     if (!isValidPassword) {
       return res.status(400).json({
         success: false,
@@ -272,10 +274,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     const newPasswordHash = await hashPassword(newPassword);
 
     // Atualizar senha
-    await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-      [newPasswordHash, req.user.id]
-    );
+    await sql`UPDATE users SET password_hash = ${newPasswordHash}, updated_at = NOW() WHERE id = ${req.user.id}`;
 
     console.log(`Senha alterada para usuário: ${req.user.email}`);
 
@@ -316,6 +315,146 @@ router.post('/forgot-password', async (req, res) => {
 
   } catch (error) {
     console.error('Erro ao solicitar reset de senha:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Rota para verificar se usuário existe (para checkout)
+router.post('/check-user', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email é obrigatório'
+      });
+    }
+
+    // Verificar se usuário existe
+    const existingUser = await sql`
+      SELECT id, email, name, company_id FROM users WHERE email = ${email}
+    `;
+
+    if (existingUser.length > 0) {
+      return res.json({
+        success: true,
+        userExists: true,
+        user: {
+          id: existingUser[0].id,
+          email: existingUser[0].email,
+          name: existingUser[0].name,
+          company_id: existingUser[0].company_id
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      userExists: false
+    });
+
+  } catch (error) {
+    console.error('Erro ao verificar usuário:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Rota para registro pré-checkout (usuário + empresa)
+router.post('/pre-checkout-register', async (req, res) => {
+  try {
+    const { userData, companyData } = req.body;
+
+    if (!userData || !companyData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Dados do usuário e empresa são obrigatórios'
+      });
+    }
+
+    const { name, email, password } = userData;
+    const { companyName, cnpj, phone } = companyData;
+
+    if (!name || !email || !password || !companyName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nome, email, senha e nome da empresa são obrigatórios'
+      });
+    }
+
+    // Verificar se usuário já existe
+    const existingUser = await sql`
+      SELECT id FROM users WHERE email = ${email}
+    `;
+
+    if (existingUser.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Usuário já cadastrado. Faça login para continuar.',
+        shouldLogin: true
+      });
+    }
+
+    // Verificar se empresa já existe
+    const existingCompany = await sql`
+      SELECT id FROM companies WHERE email = ${email} OR cnpj = ${cnpj}
+    `;
+
+    if (existingCompany.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Empresa já cadastrada com este email ou CNPJ'
+      });
+    }
+
+    // Hash da senha
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Inserir empresa
+    const companyResult = await sql`
+      INSERT INTO companies (name, email, cnpj, phone, created_at)
+      VALUES (${companyName}, ${email}, ${cnpj || null}, ${phone || null}, NOW())
+      RETURNING id, name, email, cnpj, phone, created_at
+    `;
+
+    const company = companyResult[0];
+
+    // Inserir usuário
+    const userResult = await sql`
+      INSERT INTO users (name, email, username, password_hash, role, company_id, is_active, created_at, updated_at)
+      VALUES (${name}, ${email}, ${email}, ${hashedPassword}, 'admin', ${company.id}, true, NOW(), NOW())
+      RETURNING id, name, email, username, role, company_id, is_active, created_at
+    `;
+
+    const user = userResult[0];
+
+    res.json({
+      success: true,
+      message: 'Usuário e empresa registrados com sucesso',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        company_id: user.company_id
+      },
+      company: {
+        id: company.id,
+        name: company.name,
+        email: company.email,
+        cnpj: company.cnpj
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao registrar usuário pré-checkout:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'
