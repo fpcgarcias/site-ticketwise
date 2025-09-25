@@ -1,20 +1,11 @@
 // API Client para comunicação com o backend
-const DEFAULT_API_URL = 'http://localhost:3001/api';
-
 const resolveApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && envUrl.trim().length > 0) {
-    return envUrl.replace(/\/$/, '');
+    return envUrl.trim().replace(/\/$/, '');
   }
 
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin.replace(/\/$/, '');
-    if (!origin.includes('localhost')) {
-      return `${origin}/api`;
-    }
-  }
-
-  return DEFAULT_API_URL;
+  return '/api';
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
