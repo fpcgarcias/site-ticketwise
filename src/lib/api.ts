@@ -1,5 +1,23 @@
 // API Client para comunicação com o backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const DEFAULT_API_URL = 'http://localhost:3001/api';
+
+const resolveApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.replace(/\/$/, '');
+  }
+
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin.replace(/\/$/, '');
+    if (!origin.includes('localhost')) {
+      return `${origin}/api`;
+    }
+  }
+
+  return DEFAULT_API_URL;
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 // Tipos para autenticação
 export interface User {
@@ -218,8 +236,29 @@ class ApiClient {
   }
 
   // Métodos do Stripe
+  // Assinaturas
+  async cancelSubscription(): Promise<{ message: string }> {
+    return this.request('/subscription/cancel', {
+      method: 'POST',
+    });
+  }
+
+  async reactivateSubscription(): Promise<{ message: string }> {
+    return this.request('/subscription/reactivate', {
+      method: 'POST',
+    });
+  }
+
+  // M�todos do Stripe
   async createCheckoutSession(data: any): Promise<any> {
     return this.request('/stripe/checkout', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async processStripeSession(data: { session_id: string; registration_data?: unknown }): Promise<any> {
+    return this.request('/stripe/process-session', {
       method: 'POST',
       body: JSON.stringify(data),
     });

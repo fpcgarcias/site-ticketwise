@@ -33,18 +33,10 @@ const SuccessPage: React.FC = () => {
         }
         
         // Processar sessão do Stripe (funciona para usuários logados E novos usuários)
-        const response = await fetch('http://localhost:3001/api/stripe/process-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            session_id: sessionId,
-            registration_data: userData // Enviar dados do formulário
-          })
+        const result = await api.processStripeSession({
+          session_id: sessionId,
+          registration_data: userData
         });
-
-        const result = await response.json();
         
         if (result.success) {
           setStatus('success');

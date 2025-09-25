@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 import { useSubscription } from '../hooks/useSubscription';
 import { useInvoices } from '../hooks/useInvoices';
 import PaymentMethodModal from '../components/PaymentMethodModal';
@@ -76,54 +77,28 @@ const DashboardPage: React.FC = () => {
 
   const handleCancelSubscription = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/subscription/cancel', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        alert(data.message);
-        // Recarregar dados da assinatura
-        window.location.reload();
-      } else {
-        const error = await response.json();
-        alert(error.error || 'Erro ao cancelar assinatura');
-      }
+      const data = await api.cancelSubscription();
+      alert(data?.message || 'Assinatura cancelada com sucesso');
+      window.location.reload();
     } catch (error) {
       console.error('Erro ao cancelar assinatura:', error);
-      alert('Erro ao cancelar assinatura');
+      const message = error instanceof Error ? error.message : 'Erro ao cancelar assinatura';
+      alert(message);
     }
     setShowCancelModal(false);
   };
 
   const handleReactivateSubscription = async () => {
-     try {
-       const response = await fetch('http://localhost:3001/api/subscription/reactivate', {
-         method: 'POST',
-         headers: {
-           'Content-Type': 'application/json',
-           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-         },
-       });
- 
-       if (response.ok) {
-         const data = await response.json();
-         alert(data.message);
-         // Recarregar dados da assinatura
-         window.location.reload();
-       } else {
-         const error = await response.json();
-         alert(error.error || 'Erro ao reativar assinatura');
-       }
-     } catch (error) {
-       console.error('Erro ao reativar assinatura:', error);
-       alert('Erro ao reativar assinatura');
-     }
-   };
+    try {
+      const data = await api.reactivateSubscription();
+      alert(data?.message || 'Assinatura reativada com sucesso');
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao reativar assinatura:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao reativar assinatura';
+      alert(message);
+    }
+  };
 
    const handlePaymentMethodSuccess = () => {
      alert('Método de pagamento atualizado com sucesso!');

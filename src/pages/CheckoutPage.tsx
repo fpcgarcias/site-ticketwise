@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 import { CheckCircle, CreditCard, Calendar, User } from 'lucide-react';
 
 const CheckoutPage: React.FC = () => {
@@ -70,26 +71,18 @@ const CheckoutPage: React.FC = () => {
       });
       
       // Redirecionar para Stripe Checkout
-      const response = await fetch('http://localhost:3001/api/stripe/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          price_id: priceId,
-          success_url: `${window.location.origin}/success`,
-          cancel_url: `${window.location.origin}/pricing?action=subscribe`,
-          customer_email: user?.email,
-          customer_data: {
-            email: user?.email,
-            name: user?.name,
-            couponCode: couponCode || undefined
-          }
-        })
+      const data = await api.createCheckoutSession({
+        price_id: priceId,
+        success_url: `${window.location.origin}/success`,
+        cancel_url: `${window.location.origin}/pricing?action=subscribe`,
+        customer_email: user?.email,
+        customer_data: {
+          email: user?.email,
+          name: user?.name,
+          couponCode: couponCode || undefined
+        }
       });
 
-      const data = await response.json();
-      
       if (data.success && data.url) {
         window.location.href = data.url;
       } else {
