@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { useSubscription } from '../hooks/useSubscription';
 import { useInvoices } from '../hooks/useInvoices';
-import PaymentMethodModal from '../components/PaymentMethodModal';
 import PlanChangeModal from '../components/PlanChangeModal';
 import { 
   CreditCard, 
@@ -28,7 +27,6 @@ const DashboardPage: React.FC = () => {
   const { invoices, loading: invoicesLoading, error: invoicesError } = useInvoices();
   const [activeTab, setActiveTab] = useState<'overview' | 'subscription' | 'billing' | 'settings'>('overview');
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
 
   const formatDate = (timestamp: number | null) => {
@@ -100,10 +98,20 @@ const DashboardPage: React.FC = () => {
     }
   };
 
-   const handlePaymentMethodSuccess = () => {
-     alert('Método de pagamento atualizado com sucesso!');
-     // Recarregar dados da assinatura
-     window.location.reload();
+   const handleManagePaymentMethod = async () => {
+     try {
+       const data = await api.createBillingPortalSession(`${window.location.origin}/dashboard`);
+       if (!data?.url) {
+         throw new Error('Não foi possível abrir o portal de pagamento');
+       }
+       window.location.href = data.url;
+     } catch (error) {
+       console.error('Erro ao abrir portal de pagamento:', error);
+       const message = error instanceof Error
+         ? error.message
+         : 'Erro ao abrir portal de pagamento. Tente novamente.';
+       alert(message);
+     }
    };
 
    const handlePlanChangeSuccess = () => {
@@ -143,7 +151,7 @@ const DashboardPage: React.FC = () => {
   // Se não há assinatura, mostrar tela de contratação
   if (!loading && !subscription) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 pt-20">
 
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center">
@@ -206,7 +214,7 @@ const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pt-20">
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
@@ -344,7 +352,7 @@ const DashboardPage: React.FC = () => {
                         Alterar Plano
                       </button>
                       <button 
-                        onClick={() => setShowPaymentModal(true)}
+                        onClick={handleManagePaymentMethod}
                         className="flex items-center px-4 py-2 border border-blue-300 rounded-md text-sm font-medium text-blue-700 hover:bg-blue-50"
                       >
                         <CreditCard className="h-4 w-4 mr-2" />
@@ -502,22 +510,13 @@ const DashboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* Payment Method Modal */}
-      {showPaymentModal && (
-        <PaymentMethodModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          onSuccess={handlePaymentMethodSuccess}
-        />
-      )}
-
       {/* Plan Change Modal */}
       {showPlanModal && (
         <PlanChangeModal
           isOpen={showPlanModal}
           onClose={() => setShowPlanModal(false)}
           onSuccess={handlePlanChangeSuccess}
-          currentPlanId={subscription?.stripe_price_id}
+          currentPlanId={subscription?.price_id || undefined}
         />
       )}
 

@@ -37,7 +37,7 @@ export const useInvoices = (): UseInvoicesReturn => {
       setLoading(true);
       setError(null);
       
-      const data = await api.request('/subscription/invoices');
+      const data = await api.getInvoices();
       setInvoices(data.invoices || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');

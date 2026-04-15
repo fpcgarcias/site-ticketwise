@@ -240,6 +240,45 @@ class ApiClient {
     });
   }
 
+  async getSubscription(): Promise<any> {
+    return this.request('/subscription');
+  }
+
+  async getInvoices(): Promise<any> {
+    return this.request('/subscription/invoices');
+  }
+
+  async getSubscriptionPlans(): Promise<any> {
+    return this.request('/subscription/plans');
+  }
+
+  async changeSubscriptionPlan(newPriceId: string): Promise<any> {
+    return this.request('/subscription/change-plan', {
+      method: 'POST',
+      body: JSON.stringify({ new_price_id: newPriceId }),
+    });
+  }
+
+  async createSetupIntent(): Promise<{ client_secret: string }> {
+    return this.request('/subscription/setup-intent', {
+      method: 'POST',
+    });
+  }
+
+  async updatePaymentMethod(paymentMethodId: string): Promise<any> {
+    return this.request('/subscription/update-payment-method', {
+      method: 'POST',
+      body: JSON.stringify({ payment_method_id: paymentMethodId }),
+    });
+  }
+
+  async createBillingPortalSession(returnUrl?: string): Promise<{ success: boolean; url: string }> {
+    return this.request('/subscription/billing-portal-session', {
+      method: 'POST',
+      body: JSON.stringify({ return_url: returnUrl }),
+    });
+  }
+
   // M�todos do Stripe
   async createCheckoutSession(data: any): Promise<any> {
     return this.request('/stripe/checkout', {

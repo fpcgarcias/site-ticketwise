@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CreditCard, X, AlertCircle } from 'lucide-react';
+import { api } from '../lib/api';
+import { getStripe } from '../lib/stripe';
+import type { Stripe, StripeCardElement } from '@stripe/stripe-js';
 
 interface PaymentMethodModalProps {
   isOpen: boolean;
@@ -9,50 +12,82 @@ interface PaymentMethodModalProps {
 
 const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cardData, setCardData] = useState({
-    number: '',
-    expiry: '',
-    cvc: '',
-    name: ''
-  });
+  const [cardholderName, setCardholderName] = useState('');
+  const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
 
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    const matches = v.match(/\d{4,16}/g);
-    const match = matches && matches[0] || '';
-    const parts = [];
-    for (let i = 0, len = match.length; i < len; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-    if (parts.length) {
-      return parts.join(' ');
-    } else {
-      return v;
-    }
-  };
+  const cardContainerRef = useRef<HTMLDivElement | null>(null);
+  const stripeRef = useRef<Stripe | null>(null);
+  const cardElementRef = useRef<StripeCardElement | null>(null);
 
-  const formatExpiry = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    if (v.length >= 2) {
-      return v.substring(0, 2) + '/' + v.substring(2, 4);
+  useEffect(() => {
+    if (!isOpen) {
+      return;
     }
-    return v;
-  };
 
-  const handleInputChange = (field: string, value: string) => {
-    let formattedValue = value;
-    
-    if (field === 'number') {
-      formattedValue = formatCardNumber(value);
-    } else if (field === 'expiry') {
-      formattedValue = formatExpiry(value);
-    } else if (field === 'cvc') {
-      formattedValue = value.replace(/[^0-9]/g, '').substring(0, 4);
-    }
-    
-    setCardData(prev => ({ ...prev, [field]: formattedValue }));
-  };
+    let isMounted = true;
+    setInitializing(true);
+    setError(null);
+
+    const setupCardElement = async () => {
+      try {
+        const stripe = await getStripe();
+        if (!stripe) {
+          throw new Error('Não foi possível carregar o Stripe');
+        }
+
+        const setupIntent = await api.createSetupIntent();
+        if (!setupIntent.client_secret) {
+          throw new Error('Não foi possível preparar a atualização do cartão');
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const elements = stripe.elements({ clientSecret: setupIntent.client_secret });
+        const cardElement = elements.create('card', {
+          hidePostalCode: true,
+          style: {
+            base: {
+              fontSize: '16px',
+              color: '#111827',
+              '::placeholder': {
+                color: '#9CA3AF'
+              }
+            }
+          }
+        });
+
+        if (!cardContainerRef.current) {
+          return;
+        }
+
+        cardElement.mount(cardContainerRef.current);
+        stripeRef.current = stripe;
+        cardElementRef.current = cardElement;
+        setSetupIntentClientSecret(setupIntent.client_secret);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao preparar formulário de cartão';
+        setError(message);
+      } finally {
+        if (isMounted) {
+          setInitializing(false);
+        }
+      }
+    };
+
+    setupCardElement();
+
+    return () => {
+      isMounted = false;
+      cardElementRef.current?.destroy();
+      cardElementRef.current = null;
+      stripeRef.current = null;
+      setSetupIntentClientSecret(null);
+    };
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,47 +95,45 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ isOpen, onClose
     setError(null);
 
     try {
-      // Simular integração com Stripe Elements
-      // Em uma implementação real, você usaria o Stripe.js para criar um token seguro
-      const response = await fetch('/api/subscription/update-payment-method', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          // Em produção, você enviaria um payment_method_id do Stripe
-          payment_method_id: 'pm_simulated_' + Date.now(),
-          card_data: {
-            last4: cardData.number.slice(-4),
-            brand: getCardBrand(cardData.number),
-            exp_month: cardData.expiry.split('/')[0],
-            exp_year: '20' + cardData.expiry.split('/')[1]
+      const stripe = stripeRef.current;
+      const cardElement = cardElementRef.current;
+      const clientSecret = setupIntentClientSecret;
+
+      if (!stripe || !cardElement || !clientSecret) {
+        throw new Error('O formulário de pagamento ainda não está pronto');
+      }
+
+      const { setupIntent, error: setupError } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: cardholderName || undefined
           }
-        }),
+        }
       });
 
-      if (response.ok) {
-        onSuccess();
-        onClose();
-        setCardData({ number: '', expiry: '', cvc: '', name: '' });
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Erro ao atualizar método de pagamento');
+      if (setupError) {
+        throw new Error(setupError.message || 'Não foi possível validar o cartão');
       }
+
+      const paymentMethodId =
+        typeof setupIntent?.payment_method === 'string'
+          ? setupIntent.payment_method
+          : setupIntent?.payment_method?.id;
+
+      if (!paymentMethodId) {
+        throw new Error('Não foi possível identificar o novo método de pagamento');
+      }
+
+      await api.updatePaymentMethod(paymentMethodId);
+      onSuccess();
+      onClose();
+      setCardholderName('');
     } catch (err) {
-      setError('Erro de conexão. Tente novamente.');
+      setError(err instanceof Error ? err.message : 'Erro de conexão. Tente novamente.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const getCardBrand = (number: string) => {
-    const cleanNumber = number.replace(/\s/g, '');
-    if (cleanNumber.startsWith('4')) return 'visa';
-    if (cleanNumber.startsWith('5') || cleanNumber.startsWith('2')) return 'mastercard';
-    if (cleanNumber.startsWith('3')) return 'amex';
-    return 'unknown';
   };
 
   if (!isOpen) return null;
@@ -113,10 +146,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ isOpen, onClose
             <CreditCard className="h-5 w-5 mr-2" />
             Atualizar Cartão de Crédito
           </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -132,62 +162,24 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ isOpen, onClose
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nome no Cartão
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome no Cartão</label>
             <input
               type="text"
-              value={cardData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
+              value={cardholderName}
+              onChange={(e) => setCardholderName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="João Silva"
-              required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Número do Cartão
-            </label>
-            <input
-              type="text"
-              value={cardData.number}
-              onChange={(e) => handleInputChange('number', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="1234 5678 9012 3456"
-              maxLength={19}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Validade
-              </label>
-              <input
-                type="text"
-                value={cardData.expiry}
-                onChange={(e) => handleInputChange('expiry', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="MM/AA"
-                maxLength={5}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                CVC
-              </label>
-              <input
-                type="text"
-                value={cardData.cvc}
-                onChange={(e) => handleInputChange('cvc', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="123"
-                maxLength={4}
-                required
-              />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dados do Cartão</label>
+            <div className="w-full px-3 py-3 border border-gray-300 rounded-md">
+              {initializing ? (
+                <span className="text-sm text-gray-500">Carregando formulário seguro...</span>
+              ) : (
+                <div ref={cardContainerRef} />
+              )}
             </div>
           </div>
 
@@ -203,7 +195,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ isOpen, onClose
             <button
               type="submit"
               className="px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
-              disabled={loading}
+              disabled={loading || initializing}
             >
               {loading ? 'Atualizando...' : 'Atualizar Cartão'}
             </button>

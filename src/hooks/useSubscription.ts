@@ -27,7 +27,7 @@ export function useSubscription() {
         setLoading(true);
         setError(null);
         
-        const data = await api.request('/subscription');
+        const data = await api.getSubscription();
         console.log('🔍 Dados recebidos do backend:', data);
         
         setSubscription(data.subscription);

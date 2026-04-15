@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Loader2 } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface Plan {
   id: string;
@@ -37,18 +38,8 @@ const PlanChangeModal: React.FC<PlanChangeModalProps> = ({
   const fetchPlans = async () => {
     try {
       setLoadingPlans(true);
-      const response = await fetch('/api/subscription/plans', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPlans(data.plans || []);
-      } else {
-        setError('Erro ao carregar planos disponíveis');
-      }
+      const data = await api.getSubscriptionPlans();
+      setPlans(data.plans || []);
     } catch (error) {
       console.error('Erro ao buscar planos:', error);
       setError('Erro ao carregar planos disponíveis');
@@ -74,27 +65,12 @@ const PlanChangeModal: React.FC<PlanChangeModalProps> = ({
     setError('');
 
     try {
-      const response = await fetch('/api/subscription/change-plan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          newPriceId: selectedPlanId,
-        }),
-      });
-
-      if (response.ok) {
-        onSuccess();
-        onClose();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Erro ao alterar plano');
-      }
+      await api.changeSubscriptionPlan(selectedPlanId);
+      onSuccess();
+      onClose();
     } catch (error) {
       console.error('Erro ao alterar plano:', error);
-      setError('Erro ao alterar plano. Tente novamente.');
+      setError(error instanceof Error ? error.message : 'Erro ao alterar plano. Tente novamente.');
     } finally {
       setLoading(false);
     }

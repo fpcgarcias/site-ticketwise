@@ -111,12 +111,35 @@ router.get('/', authenticateUser, async (req, res) => {
 // Obter histórico de pagamentos/faturas do usuário
 router.get('/invoices', authenticateUser, async (req, res) => {
   try {
-    // Por enquanto, retornar array vazio
-    res.json({
-      invoices: [],
-      has_more: false
-    });
+    const userId = req.user.id;
 
+    const invoices = await sql`
+      WITH customer_ids AS (
+        SELECT stripe_customer_id
+        FROM stripe_customers
+        WHERE user_id = ${userId}
+      )
+      SELECT
+        id,
+        checkout_session_id,
+        payment_intent_id,
+        status,
+        amount_total,
+        amount_subtotal,
+        currency,
+        created_at,
+        updated_at
+      FROM stripe_orders
+      WHERE user_id = ${userId}
+      OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
+      ORDER BY created_at DESC
+      LIMIT 100
+    `;
+
+    res.json({
+      invoices,
+      has_more: invoices.length === 100
+    });
   } catch (error) {
     console.error('Erro ao buscar histórico de pagamentos:', error);
     res.status(500).json({ 
@@ -126,10 +149,85 @@ router.get('/invoices', authenticateUser, async (req, res) => {
   }
 });
 
-// Cancelar assinatura
-router.post('/subscription/cancel', authenticateUser, async (req, res) => {
+// Listar planos de assinatura disponíveis
+router.get('/plans', authenticateUser, async (_req, res) => {
   try {
-    const userId = parseInt(req.user.id);
+    const prices = await stripe.prices.list({
+      active: true,
+      type: 'recurring',
+      expand: ['data.product']
+    });
+
+    const plans = prices.data.map((price) => {
+      const product = price.product;
+      const rawFeatures = product?.metadata?.features || '';
+      const features = rawFeatures
+        .split('|')
+        .map((feature) => feature.trim())
+        .filter(Boolean);
+
+      return {
+        id: price.id,
+        name: product?.name || 'Plano',
+        price: price.unit_amount || 0,
+        interval: price.recurring?.interval || 'month',
+        features
+      };
+    });
+
+    res.json({ plans });
+  } catch (error) {
+    console.error('Erro ao buscar planos:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// Criar sessão do Stripe Customer Portal (gerenciar cartão/faturamento)
+router.post('/billing-portal-session', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { return_url } = req.body || {};
+
+    const customerResult = await sql`
+      SELECT stripe_customer_id
+      FROM stripe_customers
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    if (customerResult.length === 0) {
+      return res.status(400).json({
+        error: 'Cliente Stripe não encontrado para este usuário'
+      });
+    }
+
+    const stripeCustomerId = customerResult[0].stripe_customer_id;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: return_url || `${process.env.FRONTEND_URL || 'http://localhost:5174'}/dashboard`
+    });
+
+    res.json({
+      success: true,
+      url: session.url
+    });
+  } catch (error) {
+    console.error('Erro ao criar sessão do Billing Portal:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// Cancelar assinatura
+router.post('/cancel', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
     
     // Buscar assinatura ativa do usuário no banco Neon
     const subscriptionResult = await sql`
@@ -177,9 +275,9 @@ router.post('/subscription/cancel', authenticateUser, async (req, res) => {
 });
 
 // Reativar assinatura cancelada
-router.post('/subscription/reactivate', authenticateUser, async (req, res) => {
+router.post('/reactivate', authenticateUser, async (req, res) => {
   try {
-    const userId = parseInt(req.user.id);
+    const userId = req.user.id;
     
     // Buscar assinatura do usuário no banco Neon
     const subscriptionResult = await sql`
@@ -236,9 +334,9 @@ router.post('/subscription/reactivate', authenticateUser, async (req, res) => {
 
 
 // Atualizar método de pagamento
-router.post('/subscription/update-payment-method', authenticateUser, async (req, res) => {
+router.post('/update-payment-method', authenticateUser, async (req, res) => {
   try {
-    const userId = parseInt(req.user.id);
+    const userId = req.user.id;
     const { payment_method_id } = req.body;
     
     if (!payment_method_id) {
@@ -268,18 +366,40 @@ router.post('/subscription/update-payment-method', authenticateUser, async (req,
 
     const { stripe_subscription_id, stripe_customer_id } = subscriptionResult[0];
 
-    // Anexar método de pagamento ao cliente
-    await stripe.paymentMethods.attach(payment_method_id, {
-      customer: stripe_customer_id,
+    // Anexar método de pagamento ao cliente (pode já estar anexado ao mesmo cliente)
+    try {
+      await stripe.paymentMethods.attach(payment_method_id, {
+        customer: stripe_customer_id
+      });
+    } catch (attachError) {
+      if (attachError?.code !== 'resource_already_exists') {
+        throw attachError;
+      }
+    }
+
+    // Definir como método padrão do cliente para novas cobranças
+    await stripe.customers.update(stripe_customer_id, {
+      invoice_settings: {
+        default_payment_method: payment_method_id
+      }
     });
     
     // Atualizar método de pagamento padrão da assinatura
-    const updatedSubscription = await stripe.subscriptions.update(stripe_subscription_id, {
+    await stripe.subscriptions.update(stripe_subscription_id, {
       default_payment_method: payment_method_id
     });
 
     // Buscar detalhes do novo método de pagamento
     const paymentMethod = await stripe.paymentMethods.retrieve(payment_method_id);
+
+    await sql`
+      UPDATE stripe_subscriptions
+      SET
+        payment_method_brand = ${paymentMethod.card?.brand || null},
+        payment_method_last4 = ${paymentMethod.card?.last4 || null},
+        updated_at = NOW()
+      WHERE stripe_subscription_id = ${stripe_subscription_id}
+    `;
 
     res.json({
       success: true,
@@ -302,12 +422,13 @@ router.post('/subscription/update-payment-method', authenticateUser, async (req,
 });
 
 // Alterar plano de assinatura
-router.post('/subscription/change-plan', authenticateUser, async (req, res) => {
+router.post('/change-plan', authenticateUser, async (req, res) => {
   try {
-    const userId = parseInt(req.user.id);
-    const { new_price_id } = req.body;
+    const userId = req.user.id;
+    const { new_price_id, newPriceId } = req.body;
+    const targetPriceId = new_price_id || newPriceId;
     
-    if (!new_price_id) {
+    if (!targetPriceId) {
       return res.status(400).json({ 
         error: 'ID do novo preço é obrigatório' 
       });
@@ -342,13 +463,13 @@ router.post('/subscription/change-plan', authenticateUser, async (req, res) => {
     const updatedSubscription = await stripe.subscriptions.update(stripe_subscription_id, {
       items: [{
         id: subscriptionItem.id,
-        price: new_price_id,
+        price: targetPriceId,
       }],
       proration_behavior: 'create_prorations'
     });
 
     // Buscar detalhes do novo produto/preço
-    const price = await stripe.prices.retrieve(new_price_id, {
+    const price = await stripe.prices.retrieve(targetPriceId, {
       expand: ['product']
     });
 
@@ -377,15 +498,25 @@ router.post('/subscription/change-plan', authenticateUser, async (req, res) => {
 });
 
 // Criar Setup Intent para capturar novo método de pagamento
-router.post('/subscription/setup-intent', authenticateUser, async (req, res) => {
+router.post('/setup-intent', authenticateUser, async (req, res) => {
   try {
-    const { stripeCustomerId } = req.user;
+    const userId = req.user.id;
+
+    const customerResult = await sql`
+      SELECT stripe_customer_id
+      FROM stripe_customers
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
     
-    if (!stripeCustomerId) {
+    if (customerResult.length === 0) {
       return res.status(400).json({ 
         error: 'Cliente não encontrado' 
       });
     }
+
+    const stripeCustomerId = customerResult[0].stripe_customer_id;
 
     const setupIntent = await stripe.setupIntents.create({
       customer: stripeCustomerId,

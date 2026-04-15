@@ -11,6 +11,10 @@ if (import.meta.env.DEV) {
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
+export async function getStripe() {
+  return stripePromise;
+}
+
 // Interfaces para tipos de dados do Stripe
 export interface StripeProduct {
   id: string;
