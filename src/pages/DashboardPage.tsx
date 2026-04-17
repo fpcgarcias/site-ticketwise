@@ -10,7 +10,8 @@ import {
   AlertCircle, 
   CheckCircle, 
   XCircle, 
-  Download,
+  Eye,
+  ExternalLink,
   Settings,
   Package,
   Clock,
@@ -28,6 +29,11 @@ const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'subscription' | 'billing' | 'settings'>('overview');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
+  const [syncingPlan, setSyncingPlan] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceDetailsLoading, setInvoiceDetailsLoading] = useState(false);
+  const [invoiceDetailsError, setInvoiceDetailsError] = useState<string | null>(null);
+  const [invoiceDetails, setInvoiceDetails] = useState<any>(null);
 
   const formatDate = (timestamp: number | null) => {
     if (!timestamp) return 'N/A';
@@ -39,6 +45,21 @@ const DashboardPage: React.FC = () => {
       style: 'currency',
       currency: 'BRL'
     }).format(amount / 100);
+  };
+
+  const formatDateTime = (value: string | number | null | undefined) => {
+    if (!value) return 'N/A';
+
+    const date = typeof value === 'number'
+      ? new Date(value * 1000)
+      : new Date(value);
+
+    if (Number.isNaN(date.getTime())) return 'N/A';
+
+    return `${date.toLocaleDateString('pt-BR')} ${date.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })}`;
   };
 
   const getStatusColor = (status: string) => {
@@ -120,6 +141,66 @@ const DashboardPage: React.FC = () => {
      window.location.reload();
    };
 
+   const handleSyncPlan = async () => {
+     try {
+       const typedInput = window.prompt(
+         'Digite o e-mail da assinatura no Stripe ou o ID do customer (cus_...):',
+         user?.email || ''
+       );
+       if (typedInput === null) return;
+
+       const normalizedInput = typedInput.trim();
+       if (!normalizedInput) {
+         alert('Informe um e-mail ou customer ID válido para sincronizar.');
+         return;
+       }
+
+       setSyncingPlan(true);
+       const params = normalizedInput.startsWith('cus_')
+         ? { stripe_customer_id: normalizedInput }
+         : { email: normalizedInput.toLowerCase() };
+
+       const data = await api.syncSubscriptionFromStripe(params);
+       alert(data?.message || 'Plano sincronizado com sucesso');
+       window.location.reload();
+     } catch (error) {
+       console.error('Erro ao sincronizar plano:', error);
+       const message = error instanceof Error
+         ? error.message
+         : 'Erro ao sincronizar plano. Tente novamente.';
+       alert(message);
+     } finally {
+       setSyncingPlan(false);
+     }
+   };
+
+   const handleOpenInvoiceDetails = async (invoice: any) => {
+     const invoiceIdentifier =
+       invoice?.stripe_invoice_id ||
+       invoice?.checkout_session_id ||
+       invoice?.payment_intent_id ||
+       invoice?.id;
+     if (!invoiceIdentifier) {
+       alert('Não foi possível identificar esta fatura.');
+       return;
+     }
+
+     try {
+       setShowInvoiceModal(true);
+       setInvoiceDetailsLoading(true);
+       setInvoiceDetailsError(null);
+       setInvoiceDetails(null);
+
+       const data = await api.getInvoiceDetails(invoiceIdentifier);
+       setInvoiceDetails(data);
+     } catch (error) {
+       console.error('Erro ao buscar detalhes da fatura:', error);
+       setInvoiceDetailsError(error instanceof Error ? error.message : 'Erro ao carregar detalhes da fatura.');
+     } finally {
+       setInvoiceDetailsLoading(false);
+     }
+   };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -191,13 +272,24 @@ const DashboardPage: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              <Link
-                to="/pricing?action=subscribe"
-                className="inline-flex items-center px-8 py-4 border border-transparent text-lg font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 transition-colors"
-              >
-                <Package className="h-5 w-5 mr-2" />
-                Contratar Plano
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
+                <button
+                  type="button"
+                  onClick={handleSyncPlan}
+                  disabled={syncingPlan}
+                  className="inline-flex items-center px-8 py-4 border border-purple-200 text-lg font-medium rounded-md text-purple-700 bg-white hover:bg-purple-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`h-5 w-5 mr-2 ${syncingPlan ? 'animate-spin' : ''}`} />
+                  {syncingPlan ? 'Sincronizando...' : 'Sincronizar Plano'}
+                </button>
+                <Link
+                  to="/pricing?action=subscribe"
+                  className="inline-flex items-center px-8 py-4 border border-transparent text-lg font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 transition-colors"
+                >
+                  <Package className="h-5 w-5 mr-2" />
+                  Contratar Plano
+                </Link>
+              </div>
               <div>
                 <Link
                   to="/features"
@@ -308,6 +400,25 @@ const DashboardPage: React.FC = () => {
         {/* Subscription Tab */}
         {activeTab === 'subscription' && (
           <div className="space-y-6">
+            {subscription?.status === 'past_due' && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-900">Pagamento pendente</p>
+                    <p className="text-sm text-yellow-800 mt-1">
+                      Identificamos uma falha na cobrança da sua assinatura. Atualize seu cartão para evitar interrupções.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleManagePaymentMethod}
+                    className="whitespace-nowrap px-3 py-2 border border-yellow-300 rounded-md text-sm font-medium text-yellow-900 hover:bg-yellow-100"
+                  >
+                    Atualizar Cartão
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900">Detalhes da Assinatura</h3>
@@ -341,7 +452,7 @@ const DashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                {subscription?.status === 'active' && (
+                {(subscription?.status === 'active' || subscription?.status === 'past_due') && (
                   <div className="pt-4 border-t border-gray-200">
                     <div className="flex flex-wrap gap-4">
                       <button 
@@ -436,30 +547,58 @@ const DashboardPage: React.FC = () => {
                         {invoices.map((invoice) => (
                           <tr key={invoice.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {new Date(invoice.created_at).toLocaleDateString('pt-BR')}
+                              {(() => {
+                                const hasPaidAt = Boolean(invoice.paid_at);
+                                const referenceDate = invoice.paid_at || invoice.created_at;
+                                return (
+                                  <div>
+                                    <p className="text-xs text-gray-500">
+                                      {hasPaidAt ? 'Pago em' : 'Emitido em'}
+                                    </p>
+                                    <p className="text-gray-900">{new Date(referenceDate).toLocaleDateString('pt-BR')}</p>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                              {invoice.payment_intent_id || invoice.checkout_session_id || invoice.id}
+                              {invoice.payment_intent_id || invoice.stripe_invoice_id || invoice.checkout_session_id || invoice.id}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                invoice.status === 'paid' || invoice.status === 'complete' 
+                              {(() => {
+                                const status = (invoice.status || '').toLowerCase();
+                                const isPaid = status === 'completed' || status === 'paid' || status === 'complete';
+                                const isPending = status === 'pending' || status === 'processing' || status === 'open' || status === 'draft';
+                                const statusClass = isPaid
                                   ? 'bg-green-100 text-green-800'
-                                  : invoice.status === 'pending'
+                                  : isPending
                                   ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {invoice.status === 'paid' || invoice.status === 'complete' ? 'Pago' :
-                                 invoice.status === 'pending' ? 'Pendente' : 'Falhou'}
-                              </span>
+                                  : 'bg-red-100 text-red-800';
+                                const statusLabel = isPaid
+                                  ? 'Pago'
+                                  : isPending
+                                  ? 'Pendente'
+                                  : status === 'refunded'
+                                  ? 'Reembolsado'
+                                  : 'Cancelado';
+
+                                return (
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}`}>
+                                    {statusLabel}
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {formatCurrency(invoice.amount_total)}
+                              {formatCurrency(Number(invoice.amount_total || 0))}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <button className="text-purple-600 hover:text-purple-900 flex items-center">
-                                <Download className="h-4 w-4 mr-1" />
-                                Baixar
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInvoiceDetails(invoice)}
+                                className="text-purple-600 hover:text-purple-900 flex items-center"
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Detalhes
                               </button>
                             </td>
                           </tr>
@@ -518,6 +657,151 @@ const DashboardPage: React.FC = () => {
           onSuccess={handlePlanChangeSuccess}
           currentPlanId={subscription?.price_id || undefined}
         />
+      )}
+
+      {/* Invoice Details Modal */}
+      {showInvoiceModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Detalhes da Fatura</h3>
+              <button
+                onClick={() => {
+                  setShowInvoiceModal(false);
+                  setInvoiceDetails(null);
+                  setInvoiceDetailsError(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+
+            {invoiceDetailsLoading ? (
+              <div className="text-center py-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                <p className="text-gray-500 mt-3">Carregando detalhes...</p>
+              </div>
+            ) : invoiceDetailsError ? (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-700">{invoiceDetailsError}</p>
+              </div>
+            ) : invoiceDetails ? (
+              <div className="space-y-6">
+                {invoiceDetails.warning && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                    {invoiceDetails.warning}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">ID da Fatura</p>
+                    <p className="font-mono text-gray-900">{invoiceDetails?.invoice?.id || invoiceDetails?.order?.checkout_session_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Status</p>
+                    <p className="text-gray-900">{invoiceDetails?.invoice?.status || invoiceDetails?.order?.status || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Data de Emissão</p>
+                    <p className="text-gray-900">{formatDateTime(invoiceDetails?.invoice?.created || invoiceDetails?.order?.created_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Data Real de Pagamento</p>
+                    <p className="text-gray-900">{formatDateTime(invoiceDetails?.invoice?.paid_at || invoiceDetails?.order?.paid_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Vencimento</p>
+                    <p className="text-gray-900">{formatDateTime(invoiceDetails?.invoice?.due_date || invoiceDetails?.order?.due_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Tentativas de Cobrança</p>
+                    <p className="text-gray-900">{invoiceDetails?.invoice?.attempt_count ?? invoiceDetails?.order?.attempt_count ?? 'N/A'}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Subtotal</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {formatCurrency(Number(invoiceDetails?.invoice?.subtotal ?? invoiceDetails?.order?.amount_subtotal ?? 0))}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Total</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {formatCurrency(Number(invoiceDetails?.invoice?.total ?? invoiceDetails?.order?.amount_total ?? 0))}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Valor Pago</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {formatCurrency(Number(invoiceDetails?.invoice?.amount_paid ?? 0))}
+                    </p>
+                  </div>
+                </div>
+
+                {Array.isArray(invoiceDetails?.invoice?.lines) && invoiceDetails.invoice.lines.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Itens da Fatura</h4>
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Descrição</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Período</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {invoiceDetails.invoice.lines.map((line: any) => (
+                            <tr key={line.id}>
+                              <td className="px-4 py-2 text-sm text-gray-900">{line.product_name || line.description || 'Item'}</td>
+                              <td className="px-4 py-2 text-sm text-gray-600">
+                                {line.period_start && line.period_end
+                                  ? `${formatDate(line.period_start)} - ${formatDate(line.period_end)}`
+                                  : 'N/A'}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-900">{formatCurrency(Number(line.amount || 0))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {(invoiceDetails?.invoice?.hosted_invoice_url || invoiceDetails?.invoice?.invoice_pdf) && (
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    {invoiceDetails?.invoice?.hosted_invoice_url && (
+                      <a
+                        href={invoiceDetails.invoice.hosted_invoice_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center px-3 py-2 border border-purple-300 text-sm font-medium rounded-md text-purple-700 hover:bg-purple-50"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Abrir no Stripe
+                      </a>
+                    )}
+                    {invoiceDetails?.invoice?.invoice_pdf && (
+                      <a
+                        href={invoiceDetails.invoice.invoice_pdf}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        PDF da Fatura
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
 
       {/* Cancel Subscription Modal */}

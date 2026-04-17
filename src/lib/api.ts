@@ -244,8 +244,19 @@ class ApiClient {
     return this.request('/subscription');
   }
 
+  async syncSubscriptionFromStripe(params?: { email?: string; stripe_customer_id?: string }): Promise<any> {
+    return this.request('/subscription/sync', {
+      method: 'POST',
+      body: JSON.stringify(params || {}),
+    });
+  }
+
   async getInvoices(): Promise<any> {
     return this.request('/subscription/invoices');
+  }
+
+  async getInvoiceDetails(invoiceId: string): Promise<any> {
+    return this.request(`/subscription/invoices/${encodeURIComponent(invoiceId)}`);
   }
 
   async getSubscriptionPlans(): Promise<any> {

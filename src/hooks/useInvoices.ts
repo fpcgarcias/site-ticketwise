@@ -6,10 +6,19 @@ interface Invoice {
   id: string;
   checkout_session_id: string | null;
   payment_intent_id: string | null;
+  stripe_invoice_id?: string | null;
   status: string;
+  stripe_status?: string | null;
   amount_total: number;
   amount_subtotal: number;
   currency: string;
+  paid_at?: string | null;
+  due_date?: string | null;
+  period_start?: number | null;
+  period_end?: number | null;
+  attempt_count?: number | null;
+  hosted_invoice_url?: string | null;
+  invoice_pdf?: string | null;
   created_at: string;
   updated_at: string;
 }

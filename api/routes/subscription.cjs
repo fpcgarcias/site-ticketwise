@@ -12,6 +12,542 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+const SYNCABLE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due', 'unpaid', 'incomplete']);
+const VISIBLE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'];
+const PUBLIC_SUBSCRIPTION_PRICE_IDS = new Set([
+  'price_1S3KBfJrnNh1FDmnnPMtWGVv',
+  'price_1S3KE7JrnNh1FDmnLtAd7SD8',
+  'price_1S3KCVJrnNh1FDmn8bvDvan7',
+  'price_1S3JqtJrnNh1FDmnAlSaVtR1',
+  'price_1S3KDPJrnNh1FDmnZl2MA8c8',
+  'price_1S3dS9JrnNh1FDmnFgdKcIvw'
+]);
+
+function normalizeEmail(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+function mapStripeInvoiceStatusToOrderStatus(stripeStatus) {
+  switch ((stripeStatus || '').toLowerCase()) {
+    case 'paid':
+      return 'completed';
+    case 'processing':
+      return 'processing';
+    case 'refunded':
+      return 'refunded';
+    case 'void':
+    case 'uncollectible':
+    case 'deleted':
+      return 'canceled';
+    case 'open':
+    case 'draft':
+    case 'pending':
+    default:
+      return 'pending';
+  }
+}
+
+function pickMostRelevantSubscription(subscriptions) {
+  return (subscriptions || [])
+    .filter((subscription) => SYNCABLE_SUBSCRIPTION_STATUSES.has(subscription.status))
+    .sort((a, b) => (b.created || 0) - (a.created || 0))[0] || null;
+}
+
+function pickLatestSubscription(subscriptions) {
+  return (subscriptions || [])
+    .sort((a, b) => (b.created || 0) - (a.created || 0))[0] || null;
+}
+
+async function findStripeCustomersByEmail(userEmail) {
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (!normalizedEmail) return [];
+
+  const candidateEmails = Array.from(new Set([
+    userEmail,
+    normalizedEmail,
+    normalizedEmail.toUpperCase()
+  ].filter(Boolean)));
+
+  const customers = [];
+
+  for (const candidateEmail of candidateEmails) {
+    const result = await stripe.customers.list({
+      email: candidateEmail,
+      limit: 10
+    });
+    customers.push(...result.data);
+  }
+
+  const uniqueCustomers = Array.from(
+    new Map(customers.map((customer) => [customer.id, customer])).values()
+  );
+
+  return uniqueCustomers;
+}
+
+async function findStripeCustomersByCandidateEmails(candidateEmails) {
+  const normalizedCandidates = Array.from(
+    new Set((candidateEmails || []).map(normalizeEmail).filter(Boolean))
+  );
+
+  const matchedCustomers = [];
+  const seenCustomerIds = new Set();
+
+  for (const email of normalizedCandidates) {
+    const customers = await findStripeCustomersByEmail(email);
+    for (const customer of customers) {
+      if (seenCustomerIds.has(customer.id)) continue;
+      seenCustomerIds.add(customer.id);
+      matchedCustomers.push({
+        customer,
+        matchedEmail: email
+      });
+    }
+  }
+
+  return matchedCustomers;
+}
+
+async function listAllCustomerSubscriptions(customerId) {
+  const subscriptions = [];
+  let startingAfter = null;
+
+  do {
+    const page = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit: 100,
+      starting_after: startingAfter || undefined,
+      expand: ['data.default_payment_method']
+    });
+
+    subscriptions.push(...page.data);
+    startingAfter = page.has_more && page.data.length > 0
+      ? page.data[page.data.length - 1].id
+      : null;
+  } while (startingAfter);
+
+  return subscriptions;
+}
+
+async function listAllCustomerInvoices(customerId) {
+  const invoices = [];
+  let startingAfter = null;
+
+  do {
+    const page = await stripe.invoices.list({
+      customer: customerId,
+      limit: 100,
+      starting_after: startingAfter || undefined
+    });
+
+    invoices.push(...page.data);
+    startingAfter = page.has_more && page.data.length > 0
+      ? page.data[page.data.length - 1].id
+      : null;
+  } while (startingAfter);
+
+  return invoices;
+}
+
+async function extractPaymentMethodDetails(subscription) {
+  if (!subscription.default_payment_method) {
+    return { paymentMethodBrand: null, paymentMethodLast4: null };
+  }
+
+  let paymentMethod = subscription.default_payment_method;
+
+  if (typeof paymentMethod === 'string') {
+    paymentMethod = await stripe.paymentMethods.retrieve(paymentMethod);
+  }
+
+  return {
+    paymentMethodBrand: paymentMethod?.card?.brand || null,
+    paymentMethodLast4: paymentMethod?.card?.last4 || null
+  };
+}
+
+let warnedMissingInvoiceColumns = false;
+
+async function upsertInvoiceWithCompatibility({ invoice, stripeCustomerId, userId, logContext }) {
+  const normalizedOrderStatus = mapStripeInvoiceStatusToOrderStatus(invoice.status);
+  const paidAt = invoice.status_transitions?.paid_at
+    ? new Date(invoice.status_transitions.paid_at * 1000)
+    : null;
+  const dueDate = invoice.due_date
+    ? new Date(invoice.due_date * 1000)
+    : null;
+
+  try {
+    await sql`
+      INSERT INTO stripe_orders (
+        checkout_session_id,
+        payment_intent_id,
+        stripe_invoice_id,
+        stripe_customer_id,
+        user_id,
+        status,
+        stripe_status,
+        amount_total,
+        amount_subtotal,
+        currency,
+        paid_at,
+        due_date,
+        period_start,
+        period_end,
+        attempt_count,
+        hosted_invoice_url,
+        invoice_pdf,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${invoice.id},
+        ${typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.id},
+        ${invoice.id},
+        ${stripeCustomerId},
+        ${userId},
+        ${normalizedOrderStatus},
+        ${invoice.status || null},
+        ${invoice.total ?? invoice.amount_paid ?? invoice.amount_due ?? 0},
+        ${invoice.subtotal ?? invoice.total ?? 0},
+        ${invoice.currency || 'brl'},
+        ${paidAt},
+        ${dueDate},
+        ${invoice.period_start || null},
+        ${invoice.period_end || null},
+        ${invoice.attempt_count ?? 0},
+        ${invoice.hosted_invoice_url || null},
+        ${invoice.invoice_pdf || null},
+        ${new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000)},
+        NOW()
+      )
+      ON CONFLICT (checkout_session_id) DO UPDATE SET
+        payment_intent_id = EXCLUDED.payment_intent_id,
+        stripe_invoice_id = EXCLUDED.stripe_invoice_id,
+        stripe_customer_id = EXCLUDED.stripe_customer_id,
+        user_id = EXCLUDED.user_id,
+        status = EXCLUDED.status,
+        stripe_status = EXCLUDED.stripe_status,
+        amount_total = EXCLUDED.amount_total,
+        amount_subtotal = EXCLUDED.amount_subtotal,
+        currency = EXCLUDED.currency,
+        paid_at = EXCLUDED.paid_at,
+        due_date = EXCLUDED.due_date,
+        period_start = EXCLUDED.period_start,
+        period_end = EXCLUDED.period_end,
+        attempt_count = EXCLUDED.attempt_count,
+        hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+        invoice_pdf = EXCLUDED.invoice_pdf,
+        updated_at = NOW()
+    `;
+    return;
+  } catch (error) {
+    // Compatibilidade para bases sem as colunas novas da migration 004
+    if (error?.code !== '42703') {
+      throw error;
+    }
+    if (!warnedMissingInvoiceColumns) {
+      warnedMissingInvoiceColumns = true;
+      console.warn(`⚠️ ${logContext} Colunas detalhadas de invoice ausentes em stripe_orders; usando modo compatível.`);
+    }
+  }
+
+  await sql`
+    INSERT INTO stripe_orders (
+      checkout_session_id,
+      payment_intent_id,
+      stripe_customer_id,
+      user_id,
+      status,
+      amount_total,
+      amount_subtotal,
+      currency,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${invoice.id},
+      ${typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.id},
+      ${stripeCustomerId},
+      ${userId},
+      ${normalizedOrderStatus},
+      ${invoice.total ?? invoice.amount_paid ?? invoice.amount_due ?? 0},
+      ${invoice.subtotal ?? invoice.total ?? 0},
+      ${invoice.currency || 'brl'},
+      ${new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000)},
+      NOW()
+    )
+    ON CONFLICT (checkout_session_id) DO UPDATE SET
+      payment_intent_id = EXCLUDED.payment_intent_id,
+      stripe_customer_id = EXCLUDED.stripe_customer_id,
+      user_id = EXCLUDED.user_id,
+      status = EXCLUDED.status,
+      amount_total = EXCLUDED.amount_total,
+      amount_subtotal = EXCLUDED.amount_subtotal,
+      currency = EXCLUDED.currency,
+      updated_at = NOW()
+  `;
+}
+
+async function syncStripeDataForUser({
+  userId,
+  userEmail,
+  explicitEmail = null,
+  explicitStripeCustomerId = null,
+  syncInvoices = false,
+  logContext = '[SYNC]'
+}) {
+  const companyResult = await sql`
+    SELECT c.email
+    FROM users u
+    LEFT JOIN companies c ON c.id = u.company_id
+    WHERE u.id = ${userId}
+    LIMIT 1
+  `;
+
+  const companyEmail = companyResult[0]?.email || null;
+  const candidateEmails = explicitEmail
+    ? [explicitEmail]
+    : [companyEmail, userEmail];
+  const normalizedCandidates = Array.from(
+    new Set(candidateEmails.map(normalizeEmail).filter(Boolean))
+  );
+
+  console.log(`🔄 ${logContext} Candidate emails:`, normalizedCandidates);
+  if (explicitStripeCustomerId) {
+    console.log(`🔄 ${logContext} Explicit Stripe customer ID recebido:`, explicitStripeCustomerId);
+  }
+
+  if (normalizedCandidates.length === 0) {
+    return {
+      success: false,
+      httpStatus: 400,
+      error: 'Usuário sem e-mail válido para sincronização',
+      details: {}
+    };
+  }
+
+  const customerCandidates = [];
+
+  if (explicitStripeCustomerId) {
+    let explicitCustomer = null;
+    try {
+      explicitCustomer = await stripe.customers.retrieve(explicitStripeCustomerId);
+    } catch {
+      return {
+        success: false,
+        httpStatus: 404,
+        error: 'Customer Stripe informado não foi encontrado',
+        details: {}
+      };
+    }
+
+    if (!explicitCustomer || explicitCustomer.deleted) {
+      return {
+        success: false,
+        httpStatus: 404,
+        error: 'Customer Stripe informado não foi encontrado',
+        details: {}
+      };
+    }
+    customerCandidates.push({
+      customer: explicitCustomer,
+      matchedEmail: normalizeEmail(explicitCustomer.email || explicitEmail || userEmail)
+    });
+  } else {
+    customerCandidates.push(...await findStripeCustomersByCandidateEmails(normalizedCandidates));
+  }
+
+  if (customerCandidates.length === 0) {
+    return {
+      success: false,
+      httpStatus: 404,
+      error: 'Nenhum cliente no Stripe encontrado para este e-mail',
+      details: {
+        candidate_emails: normalizedCandidates
+      }
+    };
+  }
+
+  let selectedCandidate = null;
+  let selectedSubscription = null;
+  let selectedScore = -1;
+  let selectedCreatedAt = -1;
+  const checkedCustomers = [];
+
+  for (const candidate of customerCandidates) {
+    const allSubscriptions = await listAllCustomerSubscriptions(candidate.customer.id);
+    const preferredSubscription =
+      pickMostRelevantSubscription(allSubscriptions) || pickLatestSubscription(allSubscriptions);
+
+    checkedCustomers.push({
+      customer_id: candidate.customer.id,
+      email: candidate.customer.email || null,
+      subscriptions_found: allSubscriptions.length,
+      chosen_status: preferredSubscription?.status || null
+    });
+
+    if (!preferredSubscription) continue;
+
+    const isSyncableStatus = SYNCABLE_SUBSCRIPTION_STATUSES.has(preferredSubscription.status);
+    const score = isSyncableStatus ? 2 : 1;
+    const createdAt = preferredSubscription.created || 0;
+
+    if (score > selectedScore || (score === selectedScore && createdAt > selectedCreatedAt)) {
+      selectedCandidate = candidate;
+      selectedSubscription = preferredSubscription;
+      selectedScore = score;
+      selectedCreatedAt = createdAt;
+    }
+  }
+
+  if (!selectedCandidate || !selectedSubscription) {
+    console.log(`❌ ${logContext} Nenhuma assinatura encontrada para os customers candidatos:`, checkedCustomers);
+    return {
+      success: false,
+      httpStatus: 404,
+      error: 'Cliente encontrado, mas sem assinaturas para sincronizar',
+      details: {
+        candidate_emails: normalizedCandidates,
+        checked_customers: checkedCustomers
+      }
+    };
+  }
+
+  const stripeCustomer = selectedCandidate.customer;
+  let stripeSubscription = selectedSubscription;
+  try {
+    stripeSubscription = await stripe.subscriptions.retrieve(selectedSubscription.id, {
+      expand: ['default_payment_method']
+    });
+  } catch (retrieveError) {
+    console.error(`⚠️ ${logContext} Falha ao recuperar subscription completa, usando payload da listagem:`, retrieveError?.message || retrieveError);
+  }
+
+  const matchedEmail = selectedCandidate.matchedEmail;
+  const customerEmail = stripeCustomer.email || matchedEmail || normalizedCandidates[0];
+  console.log(`✅ ${logContext} Customer selecionado:`, {
+    customer_id: stripeCustomer.id,
+    customer_email: stripeCustomer.email,
+    matched_email: matchedEmail,
+    subscription_id: stripeSubscription.id,
+    subscription_status: stripeSubscription.status,
+    current_period_start: stripeSubscription.current_period_start || stripeSubscription.items?.data?.[0]?.current_period_start || null,
+    current_period_end: stripeSubscription.current_period_end || stripeSubscription.items?.data?.[0]?.current_period_end || null
+  });
+
+  await sql`
+    INSERT INTO stripe_customers (stripe_customer_id, email, name, user_id, created_at, updated_at)
+    VALUES (${stripeCustomer.id}, ${customerEmail}, ${stripeCustomer.name || ''}, ${userId}, NOW(), NOW())
+    ON CONFLICT (stripe_customer_id) DO UPDATE SET
+      email = EXCLUDED.email,
+      name = EXCLUDED.name,
+      user_id = EXCLUDED.user_id,
+      updated_at = NOW()
+  `;
+
+  const { paymentMethodBrand, paymentMethodLast4 } = await extractPaymentMethodDetails(stripeSubscription);
+  const subscriptionItem = stripeSubscription.items?.data?.[0] || null;
+  const synchronizedPriceId = subscriptionItem?.price?.id || null;
+  const synchronizedPeriodStart =
+    stripeSubscription.current_period_start || subscriptionItem?.current_period_start || null;
+  const synchronizedPeriodEnd =
+    stripeSubscription.current_period_end || subscriptionItem?.current_period_end || null;
+
+  let synchronizedPlanName = null;
+  if (synchronizedPriceId) {
+    try {
+      const stripePrice = await stripe.prices.retrieve(synchronizedPriceId, {
+        expand: ['product']
+      });
+      synchronizedPlanName = stripePrice?.product?.name || null;
+    } catch (priceError) {
+      console.error('Erro ao buscar nome do plano no Stripe:', priceError?.message || priceError);
+    }
+  }
+
+  await sql`
+    INSERT INTO stripe_subscriptions (
+      user_id,
+      stripe_subscription_id,
+      stripe_customer_id,
+      status,
+      price_id,
+      current_period_start,
+      current_period_end,
+      cancel_at_period_end,
+      payment_method_brand,
+      payment_method_last4,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${userId},
+      ${stripeSubscription.id},
+      ${stripeCustomer.id},
+      ${stripeSubscription.status},
+      ${synchronizedPriceId},
+      ${synchronizedPeriodStart},
+      ${synchronizedPeriodEnd},
+      ${stripeSubscription.cancel_at_period_end || false},
+      ${paymentMethodBrand},
+      ${paymentMethodLast4},
+      ${new Date((stripeSubscription.created || Math.floor(Date.now() / 1000)) * 1000)},
+      NOW()
+    )
+    ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+      user_id = EXCLUDED.user_id,
+      stripe_customer_id = EXCLUDED.stripe_customer_id,
+      status = EXCLUDED.status,
+      price_id = EXCLUDED.price_id,
+      current_period_start = EXCLUDED.current_period_start,
+      current_period_end = EXCLUDED.current_period_end,
+      cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+      payment_method_brand = EXCLUDED.payment_method_brand,
+      payment_method_last4 = EXCLUDED.payment_method_last4,
+      updated_at = NOW()
+  `;
+
+  if (synchronizedPlanName) {
+    await sql`
+      UPDATE companies c
+      SET
+        plan_contracted = ${synchronizedPlanName},
+        updated_at = NOW()
+      FROM users u
+      WHERE u.id = ${userId}
+      AND c.id = u.company_id
+    `;
+  }
+
+  let invoicesSynced = 0;
+  if (syncInvoices) {
+    const stripeInvoices = await listAllCustomerInvoices(stripeCustomer.id);
+    for (const invoice of stripeInvoices) {
+      await upsertInvoiceWithCompatibility({
+        invoice,
+        stripeCustomerId: stripeCustomer.id,
+        userId,
+        logContext
+      });
+      invoicesSynced += 1;
+    }
+    console.log(`✅ ${logContext} Faturas sincronizadas:`, invoicesSynced);
+  }
+
+  return {
+    success: true,
+    stripeCustomer,
+    stripeSubscription,
+    matchedEmail,
+    normalizedCandidates,
+    synchronizedPriceId,
+    synchronizedPlanName,
+    invoicesSynced
+  };
+}
+
 const { authenticateToken } = require('../middleware/auth.cjs');
 
 // Usar o middleware de autenticação real
@@ -24,6 +560,18 @@ router.get('/', authenticateUser, async (req, res) => {
     const userId = req.user.id;
     console.log('🔍 Buscando assinatura para user_id:', userId);
     console.log('🔍 Tipo do user_id:', typeof userId);
+
+    // Sincronização automática no login/carregamento do dashboard
+    try {
+      await syncStripeDataForUser({
+        userId,
+        userEmail: req.user.email,
+        syncInvoices: false,
+        logContext: '[AUTO-SYNC SUBSCRIPTION]'
+      });
+    } catch (autoSyncError) {
+      console.error('⚠️ Falha na sincronização automática de assinatura:', autoSyncError?.message || autoSyncError);
+    }
     
     // Buscar assinatura do usuário
     const subscriptionResult = await sql`
@@ -33,15 +581,15 @@ router.get('/', authenticateUser, async (req, res) => {
         c.plan_contracted
       FROM stripe_subscriptions ss
       LEFT JOIN users u ON u.id = ss.user_id
-      LEFT JOIN companies c ON c.email = u.email
+      LEFT JOIN companies c ON c.id = u.company_id
       WHERE ss.user_id = ${req.user.id}
-      AND ss.status = 'active'
+      AND ss.status IN (${VISIBLE_SUBSCRIPTION_STATUSES[0]}, ${VISIBLE_SUBSCRIPTION_STATUSES[1]}, ${VISIBLE_SUBSCRIPTION_STATUSES[2]}, ${VISIBLE_SUBSCRIPTION_STATUSES[3]}, ${VISIBLE_SUBSCRIPTION_STATUSES[4]})
       ORDER BY ss.created_at DESC
       LIMIT 1
     `;
     
     if (subscriptionResult.length === 0) {
-      console.log('❌ Nenhuma assinatura ativa encontrada');
+      console.log('❌ Nenhuma assinatura encontrada');
       res.json({
         subscription: null,
         product: null
@@ -108,33 +656,137 @@ router.get('/', authenticateUser, async (req, res) => {
   }
 });
 
+// Sincronizar assinatura existente no Stripe com base no e-mail do usuário
+router.post('/sync', authenticateUser, async (req, res) => {
+  try {
+    const syncResult = await syncStripeDataForUser({
+      userId: req.user.id,
+      userEmail: req.user.email,
+      explicitEmail: req.body?.email,
+      explicitStripeCustomerId: req.body?.stripe_customer_id,
+      syncInvoices: true,
+      logContext: '[SYNC]'
+    });
+
+    if (!syncResult.success) {
+      return res.status(syncResult.httpStatus || 400).json({
+        error: syncResult.error,
+        details: syncResult.details
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Plano sincronizado com sucesso',
+      subscription: {
+        id: syncResult.stripeSubscription.id,
+        status: syncResult.stripeSubscription.status,
+        price_id: syncResult.synchronizedPriceId,
+        plan_name: syncResult.synchronizedPlanName,
+        stripe_customer_id: syncResult.stripeCustomer.id,
+        customer_email: syncResult.stripeCustomer.email || syncResult.matchedEmail,
+        matched_email: syncResult.matchedEmail,
+        candidate_emails: syncResult.normalizedCandidates
+      },
+      invoices_synced: syncResult.invoicesSynced
+    });
+  } catch (error) {
+    console.error('Erro ao sincronizar assinatura existente:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
 // Obter histórico de pagamentos/faturas do usuário
 router.get('/invoices', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const invoices = await sql`
-      WITH customer_ids AS (
-        SELECT stripe_customer_id
-        FROM stripe_customers
+    // Sincronização automática de faturamento ao abrir dashboard/login
+    try {
+      await syncStripeDataForUser({
+        userId,
+        userEmail: req.user.email,
+        syncInvoices: true,
+        logContext: '[AUTO-SYNC INVOICES]'
+      });
+    } catch (autoSyncError) {
+      console.error('⚠️ Falha na sincronização automática de faturamento:', autoSyncError?.message || autoSyncError);
+    }
+
+    let invoices = [];
+    try {
+      invoices = await sql`
+        WITH customer_ids AS (
+          SELECT stripe_customer_id
+          FROM stripe_customers
+          WHERE user_id = ${userId}
+        )
+        SELECT
+          id,
+          checkout_session_id,
+          payment_intent_id,
+          stripe_invoice_id,
+          status,
+          stripe_status,
+          amount_total,
+          amount_subtotal,
+          currency,
+          paid_at,
+          due_date,
+          period_start,
+          period_end,
+          attempt_count,
+          hosted_invoice_url,
+          invoice_pdf,
+          created_at,
+          updated_at
+        FROM stripe_orders
         WHERE user_id = ${userId}
-      )
-      SELECT
-        id,
-        checkout_session_id,
-        payment_intent_id,
-        status,
-        amount_total,
-        amount_subtotal,
-        currency,
-        created_at,
-        updated_at
-      FROM stripe_orders
-      WHERE user_id = ${userId}
-      OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
-      ORDER BY created_at DESC
-      LIMIT 100
-    `;
+        OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
+        ORDER BY COALESCE(paid_at, created_at) DESC
+        LIMIT 100
+      `;
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      if (!warnedMissingInvoiceColumns) {
+        warnedMissingInvoiceColumns = true;
+        console.warn('⚠️ [INVOICES] Colunas detalhadas ausentes em stripe_orders; carregando modo compatível.');
+      }
+      invoices = await sql`
+        WITH customer_ids AS (
+          SELECT stripe_customer_id
+          FROM stripe_customers
+          WHERE user_id = ${userId}
+        )
+        SELECT
+          id,
+          checkout_session_id,
+          payment_intent_id,
+          NULL::VARCHAR AS stripe_invoice_id,
+          status,
+          NULL::VARCHAR AS stripe_status,
+          amount_total,
+          amount_subtotal,
+          currency,
+          NULL::TIMESTAMPTZ AS paid_at,
+          NULL::TIMESTAMPTZ AS due_date,
+          NULL::BIGINT AS period_start,
+          NULL::BIGINT AS period_end,
+          NULL::INTEGER AS attempt_count,
+          NULL::TEXT AS hosted_invoice_url,
+          NULL::TEXT AS invoice_pdf,
+          created_at,
+          updated_at
+        FROM stripe_orders
+        WHERE user_id = ${userId}
+        OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
+        ORDER BY created_at DESC
+        LIMIT 100
+      `;
+    }
 
     res.json({
       invoices,
@@ -149,6 +801,197 @@ router.get('/invoices', authenticateUser, async (req, res) => {
   }
 });
 
+// Obter detalhes de uma fatura específica
+router.get('/invoices/:invoiceId', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const invoiceId = (req.params.invoiceId || '').trim();
+
+    if (!invoiceId) {
+      return res.status(400).json({
+        error: 'ID da fatura é obrigatório'
+      });
+    }
+
+    let orderResult = [];
+    try {
+      orderResult = await sql`
+        WITH customer_ids AS (
+          SELECT stripe_customer_id
+          FROM stripe_customers
+          WHERE user_id = ${userId}
+        )
+        SELECT
+          id,
+          checkout_session_id,
+          payment_intent_id,
+          stripe_invoice_id,
+          stripe_customer_id,
+          status,
+          stripe_status,
+          amount_total,
+          amount_subtotal,
+          currency,
+          paid_at,
+          due_date,
+          period_start,
+          period_end,
+          attempt_count,
+          hosted_invoice_url,
+          invoice_pdf,
+          created_at,
+          updated_at
+        FROM stripe_orders
+        WHERE (
+          checkout_session_id = ${invoiceId}
+          OR payment_intent_id = ${invoiceId}
+          OR stripe_invoice_id = ${invoiceId}
+        )
+        AND (
+          user_id = ${userId}
+          OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
+        )
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      if (!warnedMissingInvoiceColumns) {
+        warnedMissingInvoiceColumns = true;
+        console.warn('⚠️ [INVOICE DETAILS] Colunas detalhadas ausentes em stripe_orders; carregando modo compatível.');
+      }
+      orderResult = await sql`
+        WITH customer_ids AS (
+          SELECT stripe_customer_id
+          FROM stripe_customers
+          WHERE user_id = ${userId}
+        )
+        SELECT
+          id,
+          checkout_session_id,
+          payment_intent_id,
+          NULL::VARCHAR AS stripe_invoice_id,
+          stripe_customer_id,
+          status,
+          NULL::VARCHAR AS stripe_status,
+          amount_total,
+          amount_subtotal,
+          currency,
+          NULL::TIMESTAMPTZ AS paid_at,
+          NULL::TIMESTAMPTZ AS due_date,
+          NULL::BIGINT AS period_start,
+          NULL::BIGINT AS period_end,
+          NULL::INTEGER AS attempt_count,
+          NULL::TEXT AS hosted_invoice_url,
+          NULL::TEXT AS invoice_pdf,
+          created_at,
+          updated_at
+        FROM stripe_orders
+        WHERE (
+          checkout_session_id = ${invoiceId}
+          OR payment_intent_id = ${invoiceId}
+        )
+        AND (
+          user_id = ${userId}
+          OR stripe_customer_id IN (SELECT stripe_customer_id FROM customer_ids)
+        )
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+    }
+
+    if (orderResult.length === 0) {
+      return res.status(404).json({
+        error: 'Fatura não encontrada para este usuário'
+      });
+    }
+
+    const order = orderResult[0];
+    let stripeInvoiceId = null;
+
+    if (order.stripe_invoice_id?.startsWith('in_')) {
+      stripeInvoiceId = order.stripe_invoice_id;
+    } else if (order.checkout_session_id?.startsWith('in_')) {
+      stripeInvoiceId = order.checkout_session_id;
+    } else if (order.payment_intent_id?.startsWith('in_')) {
+      stripeInvoiceId = order.payment_intent_id;
+    } else if (invoiceId.startsWith('in_')) {
+      stripeInvoiceId = invoiceId;
+    }
+
+    if (!stripeInvoiceId) {
+      return res.json({
+        source: 'local',
+        order,
+        invoice: null,
+        warning: 'Detalhes completos indisponíveis para este registro.'
+      });
+    }
+
+    try {
+      const stripeInvoice = await stripe.invoices.retrieve(stripeInvoiceId, {
+        expand: ['payment_intent', 'lines.data.price.product']
+      });
+
+      const lines = (stripeInvoice.lines?.data || []).map((line) => ({
+        id: line.id,
+        description: line.description || 'Item',
+        amount: line.amount || 0,
+        currency: line.currency || stripeInvoice.currency,
+        quantity: line.quantity || 1,
+        period_start: line.period?.start || null,
+        period_end: line.period?.end || null,
+        price_id: line.price?.id || null,
+        product_name: line.price?.product?.name || null
+      }));
+
+      return res.json({
+        source: 'stripe',
+        order,
+        invoice: {
+          id: stripeInvoice.id,
+          number: stripeInvoice.number,
+          status: stripeInvoice.status,
+          billing_reason: stripeInvoice.billing_reason,
+          created: stripeInvoice.created,
+          due_date: stripeInvoice.due_date,
+          period_start: stripeInvoice.period_start,
+          period_end: stripeInvoice.period_end,
+          paid_at: stripeInvoice.status_transitions?.paid_at || null,
+          finalized_at: stripeInvoice.status_transitions?.finalized_at || null,
+          hosted_invoice_url: stripeInvoice.hosted_invoice_url,
+          invoice_pdf: stripeInvoice.invoice_pdf,
+          currency: stripeInvoice.currency,
+          subtotal: stripeInvoice.subtotal,
+          total: stripeInvoice.total,
+          amount_paid: stripeInvoice.amount_paid,
+          amount_due: stripeInvoice.amount_due,
+          attempt_count: stripeInvoice.attempt_count,
+          next_payment_attempt: stripeInvoice.next_payment_attempt,
+          payment_intent_id: typeof stripeInvoice.payment_intent === 'string'
+            ? stripeInvoice.payment_intent
+            : stripeInvoice.payment_intent?.id || null,
+          lines
+        }
+      });
+    } catch (stripeError) {
+      console.error('Erro ao recuperar detalhes da fatura no Stripe:', stripeError?.message || stripeError);
+      return res.json({
+        source: 'local',
+        order,
+        invoice: null,
+        warning: 'Não foi possível carregar detalhes completos da fatura no Stripe agora.'
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao buscar detalhes da fatura:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
 // Listar planos de assinatura disponíveis
 router.get('/plans', authenticateUser, async (_req, res) => {
   try {
@@ -159,6 +1002,10 @@ router.get('/plans', authenticateUser, async (_req, res) => {
     });
 
     const plans = prices.data.map((price) => {
+      if (!PUBLIC_SUBSCRIPTION_PRICE_IDS.has(price.id)) {
+        return null;
+      }
+
       const product = price.product;
       const rawFeatures = product?.metadata?.features || '';
       const features = rawFeatures
@@ -173,7 +1020,7 @@ router.get('/plans', authenticateUser, async (_req, res) => {
         interval: price.recurring?.interval || 'month',
         features
       };
-    });
+    }).filter(Boolean);
 
     res.json({ plans });
   } catch (error) {

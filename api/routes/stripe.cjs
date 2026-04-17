@@ -14,6 +14,57 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+let warnedMissingInvoiceColumns = false;
+
+async function ensureWebhookEventsTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      event_id VARCHAR(255) PRIMARY KEY,
+      event_type VARCHAR(100) NOT NULL,
+      processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      payload JSONB
+    )
+  `;
+}
+
+async function reserveWebhookEvent(event) {
+  const result = await sql`
+    INSERT INTO stripe_webhook_events (event_id, event_type, payload)
+    VALUES (${event.id}, ${event.type}, ${JSON.stringify(event)})
+    ON CONFLICT (event_id) DO NOTHING
+    RETURNING event_id
+  `;
+  return result.length > 0;
+}
+
+function webhookLog(stage, payload) {
+  console.log(JSON.stringify({
+    source: 'stripe-webhook',
+    stage,
+    timestamp: new Date().toISOString(),
+    ...payload
+  }));
+}
+
+function mapStripeInvoiceStatusToOrderStatus(stripeStatus) {
+  switch ((stripeStatus || '').toLowerCase()) {
+    case 'paid':
+      return 'completed';
+    case 'processing':
+      return 'processing';
+    case 'refunded':
+      return 'refunded';
+    case 'void':
+    case 'uncollectible':
+    case 'deleted':
+      return 'canceled';
+    case 'open':
+    case 'draft':
+    case 'pending':
+    default:
+      return 'pending';
+  }
+}
 
 // GET /api/stripe/products - Lista produtos do Stripe
 router.get('/products', async (req, res) => {
@@ -201,9 +252,34 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   }
 
   try {
+    await ensureWebhookEventsTable();
+
+    const inserted = await reserveWebhookEvent(event);
+    if (!inserted) {
+      webhookLog('duplicate_ignored', {
+        eventId: event.id,
+        eventType: event.type
+      });
+      return res.json({ received: true, duplicate: true });
+    }
+
+    webhookLog('processing_started', {
+      eventId: event.id,
+      eventType: event.type
+    });
+
     await handleStripeEvent(event);
+    webhookLog('processing_succeeded', {
+      eventId: event.id,
+      eventType: event.type
+    });
     res.json({ received: true });
   } catch (error) {
+    webhookLog('processing_failed', {
+      eventId: event?.id,
+      eventType: event?.type,
+      error: error?.message
+    });
     console.error('Erro ao processar webhook:', error);
     res.status(500).json({ error: error.message });
   }
@@ -224,7 +300,7 @@ async function handleStripeEvent(event) {
       break;
     case 'invoice.payment_succeeded':
     case 'invoice.payment_failed':
-      await handleInvoiceEvent(event.data.object);
+      await handleInvoiceEvent(event.data.object, event.type);
       break;
     case 'customer.updated':
       await handleCustomerUpdated(event.data.object);
@@ -345,27 +421,107 @@ async function handleSubscriptionEvent(subscription) {
 }
 
 // Processar eventos de fatura/pagamento
-async function handleInvoiceEvent(invoice) {
+async function handleInvoiceEvent(invoice, eventType) {
   try {
     // Sincronizar cliente primeiro
     await syncCustomerFromStripe(invoice.customer);
+    const normalizedOrderStatus = mapStripeInvoiceStatusToOrderStatus(invoice.status);
+    const paidAt = invoice.status_transitions?.paid_at
+      ? new Date(invoice.status_transitions.paid_at * 1000)
+      : null;
+    const dueDate = invoice.due_date
+      ? new Date(invoice.due_date * 1000)
+      : null;
 
     // Inserir/atualizar ordem de pagamento
-    await sql`
-      INSERT INTO stripe_orders (
-        payment_intent_id, stripe_customer_id, status, 
-        amount_total, amount_subtotal, currency, created_at, updated_at
-      )
-      VALUES (
-        ${invoice.payment_intent || invoice.id}, ${invoice.customer}, 
-        ${invoice.status}, ${invoice.amount_paid}, ${invoice.subtotal}, 
-        ${invoice.currency}, ${new Date(invoice.created * 1000)}, ${new Date()}
-      )
-      ON CONFLICT (payment_intent_id) DO UPDATE SET
-        status = EXCLUDED.status,
-        amount_total = EXCLUDED.amount_total,
-        updated_at = EXCLUDED.updated_at
-    `;
+    try {
+      await sql`
+        INSERT INTO stripe_orders (
+          checkout_session_id, payment_intent_id, stripe_invoice_id, stripe_customer_id, status, stripe_status,
+          amount_total, amount_subtotal, currency, paid_at, due_date, period_start, period_end,
+          attempt_count, hosted_invoice_url, invoice_pdf, created_at, updated_at
+        )
+        VALUES (
+          ${invoice.id}, ${invoice.payment_intent || invoice.id}, ${invoice.id}, ${invoice.customer},
+          ${normalizedOrderStatus}, ${invoice.status || null},
+          ${invoice.total ?? invoice.amount_paid ?? invoice.amount_due ?? 0}, ${invoice.subtotal ?? invoice.total ?? 0},
+          ${invoice.currency || 'brl'},
+          ${paidAt},
+          ${dueDate},
+          ${invoice.period_start || null},
+          ${invoice.period_end || null},
+          ${invoice.attempt_count ?? 0},
+          ${invoice.hosted_invoice_url || null},
+          ${invoice.invoice_pdf || null},
+          ${new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000)},
+          ${new Date()}
+        )
+        ON CONFLICT (checkout_session_id) DO UPDATE SET
+          payment_intent_id = EXCLUDED.payment_intent_id,
+          stripe_invoice_id = EXCLUDED.stripe_invoice_id,
+          status = EXCLUDED.status,
+          stripe_status = EXCLUDED.stripe_status,
+          amount_total = EXCLUDED.amount_total,
+          amount_subtotal = EXCLUDED.amount_subtotal,
+          currency = EXCLUDED.currency,
+          paid_at = EXCLUDED.paid_at,
+          due_date = EXCLUDED.due_date,
+          period_start = EXCLUDED.period_start,
+          period_end = EXCLUDED.period_end,
+          attempt_count = EXCLUDED.attempt_count,
+          hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+          invoice_pdf = EXCLUDED.invoice_pdf,
+          updated_at = EXCLUDED.updated_at
+      `;
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      if (!warnedMissingInvoiceColumns) {
+        warnedMissingInvoiceColumns = true;
+        console.warn('⚠️ [WEBHOOK] Colunas detalhadas de invoice ausentes em stripe_orders; usando modo compatível.');
+      }
+      await sql`
+        INSERT INTO stripe_orders (
+          checkout_session_id, payment_intent_id, stripe_customer_id, status,
+          amount_total, amount_subtotal, currency, created_at, updated_at
+        )
+        VALUES (
+          ${invoice.id}, ${invoice.payment_intent || invoice.id}, ${invoice.customer}, ${normalizedOrderStatus},
+          ${invoice.total ?? invoice.amount_paid ?? invoice.amount_due ?? 0}, ${invoice.subtotal ?? invoice.total ?? 0},
+          ${invoice.currency || 'brl'},
+          ${new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000)},
+          ${new Date()}
+        )
+        ON CONFLICT (checkout_session_id) DO UPDATE SET
+          payment_intent_id = EXCLUDED.payment_intent_id,
+          status = EXCLUDED.status,
+          amount_total = EXCLUDED.amount_total,
+          amount_subtotal = EXCLUDED.amount_subtotal,
+          currency = EXCLUDED.currency,
+          updated_at = EXCLUDED.updated_at
+      `;
+    }
+
+    if (eventType === 'invoice.payment_failed') {
+      await sql`
+        UPDATE stripe_subscriptions
+        SET
+          status = 'past_due',
+          updated_at = NOW()
+        WHERE stripe_customer_id = ${invoice.customer}
+          AND status != 'canceled'
+      `;
+    }
+
+    if (eventType === 'invoice.payment_succeeded') {
+      await sql`
+        UPDATE stripe_subscriptions
+        SET
+          status = 'active',
+          updated_at = NOW()
+        WHERE stripe_customer_id = ${invoice.customer}
+          AND status IN ('past_due', 'incomplete', 'unpaid')
+      `;
+    }
 
     console.log(`Fatura ${invoice.id} processada com sucesso`);
   } catch (error) {
