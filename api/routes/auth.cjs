@@ -246,7 +246,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     }
 
     const { neon } = require('@neondatabase/serverless');
-    const { verifyPassword, hashPassword } = require('../middleware/auth');
+    const { verifyPassword, hashPassword } = require('../middleware/auth.cjs');
     
     const sql = neon(process.env.DATABASE_URL);
 

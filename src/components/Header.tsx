@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, ChevronDown, User, LogOut, Settings } from 'lucide-react';
+import { Menu, X, ChevronDown, User, LogOut, Settings, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from './Logo';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const location = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
 
@@ -119,6 +121,17 @@ const Header: React.FC = () => {
                       Painel de Controle
                     </Link>
                     <button
+                      type="button"
+                      onClick={() => {
+                        setIsPasswordModalOpen(true);
+                        closeMenu();
+                      }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <KeyRound size={16} className="mr-2" />
+                      Trocar Senha
+                    </button>
+                    <button
                       onClick={handleLogout}
                       className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
@@ -207,6 +220,17 @@ const Header: React.FC = () => {
               </div>
               <div className="text-sm text-gray-500 mb-3">{user?.email}</div>
               <button
+                type="button"
+                onClick={() => {
+                  setIsPasswordModalOpen(true);
+                  closeMenu();
+                }}
+                className="flex items-center w-full text-left font-medium text-gray-700 hover:text-purple-600 mb-2"
+              >
+                <KeyRound size={16} className="mr-2" />
+                Trocar Senha
+              </button>
+              <button
                 onClick={handleLogout}
                 className="flex items-center w-full text-left font-medium text-red-600 hover:text-red-700"
               >
@@ -245,6 +269,11 @@ const Header: React.FC = () => {
           )}
         </nav>
       </div>
+
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </header>
   );
 };

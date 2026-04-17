@@ -184,6 +184,17 @@ class ApiClient {
     }
   }
 
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+    confirmNewPassword: string;
+  }): Promise<{ success: boolean; message: string }> {
+    return this.request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Verificar se está autenticado
   isAuthenticated(): boolean {
     return !!this.accessToken;
