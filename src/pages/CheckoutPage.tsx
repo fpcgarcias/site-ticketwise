@@ -31,7 +31,7 @@ const CheckoutPage: React.FC = () => {
       annual: 169,
       productId: 'prod_SzIoCGhsjjYaPU',
       priceIdMonthly: 'price_1S3KCVJrnNh1FDmn8bvDvan7',
-      priceIdAnnual: 'price_1S3KE7JrnNh1FDmnLtAd7SD8'
+      priceIdAnnual: 'price_1TPlYZJrnNh1FDmngb9cCB2b'
     },
     enterprise: { 
       name: 'Enterprise', 
@@ -39,7 +39,7 @@ const CheckoutPage: React.FC = () => {
       annual: 254,
       productId: 'prod_SzIpJgbybcopWu',
       priceIdMonthly: 'price_1S3KDPJrnNh1FDmnZl2MA8c8',
-      priceIdAnnual: 'price_1S3KE7JrnNh1FDmnLtAd7SD8'
+      priceIdAnnual: 'price_1TPlZAJrnNh1FDmnngk2DpkU'
     }
   };
 

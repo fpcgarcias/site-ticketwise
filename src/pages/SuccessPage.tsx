@@ -104,6 +104,18 @@ const SuccessPage: React.FC = () => {
                 )}
                 
                 <div className="space-y-4">
+                  <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-left">
+                    <p className="text-sm font-medium text-purple-900">Domínio personalizado</p>
+                    <p className="text-sm text-purple-800 mt-1">
+                      Configure o endereço do seu suporte (ex.: suporte.suaempresa.com.br) no painel do site.
+                    </p>
+                    <Link
+                      to="/dashboard?tab=domain"
+                      className="mt-3 inline-flex items-center text-sm font-medium text-purple-700 hover:text-purple-900"
+                    >
+                      Abrir configuração de domínio →
+                    </Link>
+                  </div>
                   <h2 className="text-lg font-semibold text-gray-900">Próximos Passos:</h2>
                   <div className="text-left space-y-2">
                     <div className="flex items-start">

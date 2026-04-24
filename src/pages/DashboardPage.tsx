@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { useSubscription } from '../hooks/useSubscription';
@@ -13,6 +13,7 @@ import {
   Eye,
   ExternalLink,
   Settings,
+  Globe,
   Package,
   Clock,
   DollarSign,
@@ -20,13 +21,26 @@ import {
   Trash2,
   RefreshCw
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import CustomHostnameCard from '../components/CustomHostnameCard';
 
 const DashboardPage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { subscription, product, loading, error } = useSubscription();
   const { invoices, loading: invoicesLoading, error: invoicesError } = useInvoices();
-  const [activeTab, setActiveTab] = useState<'overview' | 'subscription' | 'billing' | 'settings'>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'subscription' | 'domain' | 'billing' | 'settings'
+  >('overview');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab !== 'domain') return;
+    setActiveTab('domain');
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [syncingPlan, setSyncingPlan] = useState(false);
@@ -320,6 +334,7 @@ const DashboardPage: React.FC = () => {
             {[
               { id: 'overview', label: 'Visão Geral', icon: Package },
               { id: 'subscription', label: 'Assinatura', icon: CreditCard },
+              { id: 'domain', label: 'Domínio personalizado', icon: Globe },
               { id: 'billing', label: 'Faturamento', icon: FileText },
               { id: 'settings', label: 'Configurações', icon: Settings }
             ].map(({ id, label, icon: Icon }) => (
@@ -394,6 +409,13 @@ const DashboardPage: React.FC = () => {
                 <Calendar className="h-8 w-8 text-purple-600" />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Domínio personalizado (Cloudflare) */}
+        {activeTab === 'domain' && (
+          <div className="max-w-4xl">
+            <CustomHostnameCard />
           </div>
         )}
 

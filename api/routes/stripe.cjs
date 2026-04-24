@@ -16,6 +16,64 @@ if (!process.env.STRIPE_SECRET_KEY) {
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 let warnedMissingInvoiceColumns = false;
 
+// Preços/produtos BLOQUEADOS para novos checkouts (planos exclusivos de clientes específicos)
+// NUNCA devem ser contratáveis pelo fluxo normal de assinatura.
+const BLOCKED_PRICE_IDS = new Set([
+  'price_1S3dS9JrnNh1FDmnFgdKcIvw' // Ticket Wise - Enterprise DESC (exclusivo Oficina Muda)
+]);
+const BLOCKED_PRODUCT_IDS = new Set([
+  'prod_SzchLB6l5b80lp' // Ticket Wise - Enterprise DESC (exclusivo Oficina Muda)
+]);
+
+async function isBlockedPrice(priceId) {
+  if (!priceId) return false;
+  if (BLOCKED_PRICE_IDS.has(priceId)) return true;
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    const productId = typeof price.product === 'string' ? price.product : price.product?.id;
+    if (productId && BLOCKED_PRODUCT_IDS.has(productId)) return true;
+  } catch (err) {
+    console.error('⚠️ Falha ao validar price bloqueado:', err.message);
+  }
+  return false;
+}
+
+// Resolve um código digitado pelo cliente tanto para coupon quanto para promotion_code
+async function resolveDiscountCode(rawCode) {
+  const code = (rawCode || '').trim();
+  if (!code) return null;
+
+  // 1) Tentar como promotion_code (código público, case-insensitive no Stripe)
+  try {
+    const promoList = await stripe.promotionCodes.list({
+      code,
+      active: true,
+      limit: 1
+    });
+    if (promoList.data.length > 0) {
+      const promo = promoList.data[0];
+      console.log('✅ Promotion code encontrado:', promo.id, '->', promo.code);
+      return { type: 'promotion_code', id: promo.id };
+    }
+  } catch (err) {
+    console.error('⚠️ Erro buscando promotion_code:', err.message);
+  }
+
+  // 2) Fallback: tentar como coupon ID direto
+  try {
+    const coupon = await stripe.coupons.retrieve(code);
+    if (coupon && coupon.valid !== false) {
+      console.log('✅ Coupon encontrado:', coupon.id, coupon.name || '');
+      return { type: 'coupon', id: coupon.id };
+    }
+  } catch (err) {
+    // Silencioso: provavelmente não é um coupon
+  }
+
+  console.warn('❌ Código de desconto inválido/inexistente:', code);
+  return null;
+}
+
 async function ensureWebhookEventsTable() {
   await sql`
     CREATE TABLE IF NOT EXISTS stripe_webhook_events (
@@ -129,6 +187,15 @@ router.post('/checkout', async (req, res) => {
 
     console.log('🎟️ Dados recebidos no checkout:', { customer_data, couponCode: customer_data?.couponCode });
 
+    // Bloquear tentativas de contratação de planos exclusivos (ex.: Enterprise DESC)
+    if (await isBlockedPrice(price_id)) {
+      console.error('🚫 Tentativa de checkout com price bloqueado:', price_id);
+      return res.status(400).json({
+        success: false,
+        error: 'Este plano não está disponível para contratação. Selecione um plano válido.'
+      });
+    }
+
     const sessionParams = {
       payment_method_types: ['card'],
       line_items: [{
@@ -141,19 +208,18 @@ router.post('/checkout', async (req, res) => {
       locale: 'pt-BR', // Configurar Stripe em português brasileiro
     };
 
-    // Aplicar cupom se fornecido
+    // Aplicar cupom/promotion code se fornecido
     if (customer_data?.couponCode) {
-      try {
-        // Verificar se o cupom existe
-        const coupon = await stripe.coupons.retrieve(customer_data.couponCode);
-        console.log('✅ Cupom encontrado:', coupon.id, coupon.name);
-        
-        sessionParams.discounts = [{
-          coupon: customer_data.couponCode
-        }];
-      } catch (couponError) {
-        console.error('❌ Erro ao aplicar cupom:', couponError.message);
-        // Não falhar o checkout por causa do cupom, apenas logar o erro
+      const discount = await resolveDiscountCode(customer_data.couponCode);
+      if (discount) {
+        sessionParams.discounts = [
+          discount.type === 'promotion_code'
+            ? { promotion_code: discount.id }
+            : { coupon: discount.id }
+        ];
+      } else {
+        console.error('❌ Código de desconto não encontrado:', customer_data.couponCode);
+        // Mantemos o checkout: o código inválido é apenas ignorado
       }
     }
 
@@ -678,42 +744,48 @@ async function processCompanyRegistration({ session_id, customer_email, metadata
       return;
     }
     
-    // Verificar se empresa já existe
+    // Verificar se empresa já existe (email OU CNPJ)
+    const cnpjForLookup = metadata.cnpj || null;
     const existingCompany = await sql`
-      SELECT id FROM companies WHERE email = ${customer_email} OR cnpj = ${metadata.cnpj || ''}
+      SELECT id FROM companies
+      WHERE email = ${customer_email}
+         OR (${cnpjForLookup}::text IS NOT NULL AND cnpj = ${cnpjForLookup})
+      LIMIT 1
     `;
-    
+
+    let companyIdToLink;
     if (existingCompany.length > 0) {
-      console.log('Empresa já existe para este email/CNPJ');
-      return;
+      companyIdToLink = existingCompany[0].id;
+      console.log('Empresa já existente reaproveitada:', companyIdToLink);
+    } else {
+      const companyResult = await sql`
+        INSERT INTO companies (
+          name, email, cnpj, phone, employee_count,
+          plan_contracted, razao_social, created_at
+        )
+        VALUES (
+          ${metadata.customer_name || metadata.razao_social}, ${customer_email}, ${metadata.cnpj || null},
+          ${metadata.phone || null}, ${parseInt(metadata.employee_count) || 1},
+          'premium', ${metadata.razao_social}, NOW()
+        )
+        RETURNING id
+      `;
+      companyIdToLink = companyResult[0].id;
+      console.log('Empresa criada:', companyIdToLink);
     }
-    
-    // Criar empresa
-    const companyResult = await sql`
-      INSERT INTO companies (
-        name, email, cnpj, phone, employee_count, 
-        plan_contracted, razao_social, created_at
-      )
-      VALUES (
-        ${metadata.customer_name || metadata.razao_social}, ${customer_email}, ${metadata.cnpj || null}, 
-        ${metadata.phone || null}, ${parseInt(metadata.employee_count) || 1},
-        'premium', ${metadata.razao_social}, NOW()
-      )
-      RETURNING id, name, email
-    `;
-    
-    const company = companyResult[0];
-    
-    // Associar usuário à empresa
+
+    // Sempre vincular o usuário à empresa (criada ou reaproveitada), caso ainda
+    // não esteja vinculado. Antes, quando a empresa já existia, o usuário ficava
+    // órfão (sem company_id) e quebrava rotas como /api/custom-hostname.
     await sql`
-      UPDATE users 
-      SET company_id = ${company.id}, updated_at = NOW()
-      WHERE id = ${userId}
+      UPDATE users
+      SET company_id = ${companyIdToLink}, updated_at = NOW()
+      WHERE id = ${userId} AND (company_id IS NULL OR company_id <> ${companyIdToLink})
     `;
-    
-    console.log('Empresa criada e associada ao usuário:', {
-      companyId: company.id,
-      userId: userId,
+
+    console.log('✅ Usuário vinculado à empresa:', {
+      companyId: companyIdToLink,
+      userId,
       email: customer_email
     });
     

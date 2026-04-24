@@ -15,12 +15,16 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const SYNCABLE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due', 'unpaid', 'incomplete']);
 const VISIBLE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'];
 const PUBLIC_SUBSCRIPTION_PRICE_IDS = new Set([
-  'price_1S3KBfJrnNh1FDmnnPMtWGVv',
-  'price_1S3KE7JrnNh1FDmnLtAd7SD8',
-  'price_1S3KCVJrnNh1FDmn8bvDvan7',
-  'price_1S3JqtJrnNh1FDmnAlSaVtR1',
-  'price_1S3KDPJrnNh1FDmnZl2MA8c8',
-  'price_1S3dS9JrnNh1FDmnFgdKcIvw'
+  'price_1S3KBfJrnNh1FDmnnPMtWGVv', // Básico Mensal
+  'price_1S3KE7JrnNh1FDmnLtAd7SD8', // Básico Anual
+  'price_1S3KCVJrnNh1FDmn8bvDvan7', // Professional Mensal
+  'price_1TPlYZJrnNh1FDmngb9cCB2b', // Professional Anual
+  'price_1S3KDPJrnNh1FDmnZl2MA8c8', // Enterprise Mensal
+  'price_1TPlZAJrnNh1FDmnngk2DpkU', // Enterprise Anual
+  // Plano exclusivo abaixo NÃO deve aparecer em seletor público, mas precisa
+  // estar listado aqui para que a sincronização do cliente que já possui essa
+  // assinatura (Oficina Muda) funcione corretamente.
+  'price_1S3dS9JrnNh1FDmnFgdKcIvw'  // Enterprise DESC (Oficina Muda)
 ]);
 
 function normalizeEmail(email) {

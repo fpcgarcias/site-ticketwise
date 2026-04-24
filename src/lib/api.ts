@@ -40,6 +40,29 @@ export interface LoginData {
   password: string;
 }
 
+export interface CustomHostnameRow {
+  id: string;
+  company_id: string;
+  hostname: string;
+  cloudflare_hostname_id: string | null;
+  status: string;
+  ssl_status: string;
+  ssl_method: string;
+  ownership_verification: { type?: string; name?: string; value?: string } | null;
+  validation_records: Array<{
+    txt_name?: string;
+    txt_value?: string;
+    http_url?: string;
+    http_body?: string;
+  }> | null;
+  verification_errors: unknown;
+  is_primary: boolean;
+  last_checked_at: string | null;
+  activated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Classe para gerenciar API
 class ApiClient {
   private baseUrl: string;
@@ -328,6 +351,55 @@ class ApiClient {
   // Obter subscription do usuário
   async getUserSubscription(): Promise<any> {
     return this.request('/stripe/user-subscription');
+  }
+
+  /** Custom hostname (Cloudflare SSL for SaaS) */
+  async getCustomHostnameConfig(): Promise<{
+    success: boolean;
+    data: {
+      primary: CustomHostnameRow | null;
+      cname_target: string;
+      docs_url: string;
+    };
+  }> {
+    return this.request('/custom-hostname');
+  }
+
+  async createCustomHostname(hostname: string): Promise<{
+    success: boolean;
+    data: {
+      primary: CustomHostnameRow;
+      cname_target: string;
+    };
+  }> {
+    return this.request('/custom-hostname', {
+      method: 'POST',
+      body: JSON.stringify({ hostname }),
+    });
+  }
+
+  async refreshCustomHostname(id: string): Promise<{
+    success: boolean;
+    data: { primary: CustomHostnameRow; cname_target: string };
+  }> {
+    return this.request(`/custom-hostname/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST',
+    });
+  }
+
+  async switchCustomHostnameToTxt(id: string): Promise<{
+    success: boolean;
+    data: { primary: CustomHostnameRow; cname_target: string };
+  }> {
+    return this.request(`/custom-hostname/${encodeURIComponent(id)}/switch-to-txt`, {
+      method: 'POST',
+    });
+  }
+
+  async deleteCustomHostname(id: string): Promise<{ success: boolean; message?: string }> {
+    return this.request(`/custom-hostname/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   }
 }
 

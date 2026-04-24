@@ -49,6 +49,8 @@ const stripeRoutes = require('./routes/stripe.cjs');
 const subscriptionRoutes = require('./routes/subscription.cjs');
 const companyRoutes = require('./routes/company.cjs');
 const contactRoutes = require('./routes/contact.cjs');
+const customHostnameRoutes = require('./routes/custom-hostname.cjs');
+const { startCustomHostnamePoller } = require('./services/custom-hostname-poller.cjs');
 
 // Rotas de autenticação (públicas)
 app.use('/api/auth', authRoutes);
@@ -60,6 +62,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/company', companyRoutes);
+app.use('/api/custom-hostname', customHostnameRoutes);
 
 // Log das rotas registradas
 console.log('🔐 Subscription endpoints: http://localhost:3001/api/subscription/*');
@@ -118,4 +121,6 @@ app.listen(PORT, () => {
   console.log(`📧 Contact endpoints: http://localhost:${PORT}/api/contact/*`);
   console.log(`💳 Stripe endpoints: http://localhost:${PORT}/api/stripe/*`);
   console.log(`🏢 Company endpoints: http://localhost:${PORT}/api/company/*`);
+  console.log(`🌐 Custom hostname: http://localhost:${PORT}/api/custom-hostname/*`);
+  startCustomHostnamePoller();
 });

@@ -2,6 +2,73 @@ const { neon } = require('@neondatabase/serverless');
 const fs = require('fs');
 const path = require('path');
 
+async function tableExists(sql, tableName) {
+  const rows = await sql`
+    SELECT to_regclass(${`public.${tableName}`}) AS table_name
+  `;
+  return Boolean(rows[0]?.table_name);
+}
+
+async function ensureCustomHostnamesTable(sql) {
+  await sql`
+    CREATE EXTENSION IF NOT EXISTS pgcrypto
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS public.company_custom_hostnames (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+      hostname VARCHAR(255) NOT NULL,
+      cloudflare_hostname_id VARCHAR(64),
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      ssl_status VARCHAR(32) NOT NULL DEFAULT 'pending_validation',
+      ssl_method VARCHAR(16) NOT NULL DEFAULT 'http',
+      ownership_verification JSONB,
+      validation_records JSONB,
+      verification_errors JSONB,
+      is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+      last_checked_at TIMESTAMPTZ,
+      activated_at TIMESTAMPTZ,
+      email_notified_active_at TIMESTAMPTZ,
+      email_notified_timeout_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMPTZ
+    )
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_company_custom_hostnames_hostname_active
+      ON public.company_custom_hostnames (LOWER(hostname))
+      WHERE deleted_at IS NULL
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_company_primary_custom_hostname
+      ON public.company_custom_hostnames (company_id)
+      WHERE is_primary = TRUE AND deleted_at IS NULL
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_company_custom_hostnames_company_id
+      ON public.company_custom_hostnames (company_id)
+      WHERE deleted_at IS NULL
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_company_custom_hostnames_cf_id
+      ON public.company_custom_hostnames (cloudflare_hostname_id)
+      WHERE deleted_at IS NULL
+  `;
+}
+
+async function isMigrationHealthy(sql, migrationName) {
+  if (migrationName === '005_create_custom_hostnames.sql') {
+    return tableExists(sql, 'company_custom_hostnames');
+  }
+  return true;
+}
+
 async function runMigration(specificMigration = null) {
   console.log('🚀 Iniciando sistema de migração do banco de dados...');
   
@@ -122,8 +189,16 @@ async function runNumberedMigrations(sql) {
     `;
 
     if (executed.length > 0) {
-      console.log(`⏭️  Migração ${file} já executada - pulando`);
-      continue;
+      const healthy = await isMigrationHealthy(sql, file);
+      if (healthy) {
+        console.log(`⏭️  Migração ${file} já executada - pulando`);
+        continue;
+      }
+
+      console.log(`⚠️  Migração ${file} marcada como executada, mas objeto esperado não existe. Reexecutando...`);
+      await sql`
+        DELETE FROM schema_migrations WHERE migration_name = ${file}
+      `;
     }
 
     console.log(`🔄 Executando migração: ${file}`);
@@ -138,6 +213,19 @@ async function runNumberedMigrations(sql) {
       await sql`
         INSERT INTO schema_migrations (migration_name) VALUES (${file})
       `;
+
+      const healthyAfterRun = await isMigrationHealthy(sql, file);
+      if (!healthyAfterRun) {
+        if (file === '005_create_custom_hostnames.sql') {
+          console.log('⚠️  Fallback automático: criando public.company_custom_hostnames diretamente...');
+          await ensureCustomHostnamesTable(sql);
+        }
+      }
+
+      const healthyAfterFallback = await isMigrationHealthy(sql, file);
+      if (!healthyAfterFallback) {
+        throw new Error(`Migração ${file} executada, porém objeto esperado não foi encontrado`);
+      }
       
       console.log(`✅ Migração ${file} executada com sucesso!`);
       
@@ -175,6 +263,19 @@ async function runSpecificMigration(sql, migrationFile) {
       INSERT INTO schema_migrations (migration_name) VALUES (${migrationFile})
       ON CONFLICT (migration_name) DO NOTHING
     `;
+
+    const healthyAfterRun = await isMigrationHealthy(sql, migrationFile);
+    if (!healthyAfterRun) {
+      if (migrationFile === '005_create_custom_hostnames.sql') {
+        console.log('⚠️  Fallback automático: criando public.company_custom_hostnames diretamente...');
+        await ensureCustomHostnamesTable(sql);
+      }
+    }
+
+    const healthyAfterFallback = await isMigrationHealthy(sql, migrationFile);
+    if (!healthyAfterFallback) {
+      throw new Error(`Migração ${migrationFile} executada, porém objeto esperado não foi encontrado`);
+    }
     
     console.log(`✅ Migração ${migrationFile} executada com sucesso!`);
     

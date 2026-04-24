@@ -27,7 +27,7 @@ export const products = {
   pro_annual: {
     name: 'Ticket Wise - Professional Anual',
     description: 'Plano Professional Anual',
-    priceId: 'price_1S3JqtJrnNh1FDmnAlSaVtR1', // Atendente Extra Anual como placeholder
+    priceId: 'price_1TPlYZJrnNh1FDmngb9cCB2b',
     mode: 'subscription' as const,
     billing: 'annual' as const,
     amount: 202800, // R$ 2.028,00
@@ -43,7 +43,7 @@ export const products = {
   enterprise_annual: {
     name: 'Ticket Wise - Enterprise Anual',
     description: 'Plano Enterprise Anual',
-    priceId: 'price_1S3dS9JrnNh1FDmnFgdKcIvw', // Enterprise DESC como placeholder
+    priceId: 'price_1TPlZAJrnNh1FDmnngk2DpkU',
     mode: 'subscription' as const,
     billing: 'annual' as const,
     amount: 304800, // R$ 3.048,00
