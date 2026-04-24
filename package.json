@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.cjs",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node scripts/prod-start.cjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

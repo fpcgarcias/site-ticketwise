@@ -18,6 +18,13 @@ export default defineConfig({
   preview: {
     port: 5174, // Para o comando preview também usar a mesma porta
     host: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
